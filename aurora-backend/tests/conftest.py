@@ -18,12 +18,12 @@ os.environ.pop("ANTHROPIC_API_KEY", None)
 
 import fakeredis  # noqa: E402
 import pytest  # noqa: E402
+from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
-from alembic import command  # noqa: E402
 from app.core.config import get_settings  # noqa: E402
 from app.core.redis_client import set_redis_override  # noqa: E402
 from app.db.models import Base, Organization  # noqa: E402

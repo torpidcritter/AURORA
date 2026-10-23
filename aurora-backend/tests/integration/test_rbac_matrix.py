@@ -31,6 +31,8 @@ MATRIX = [
     ("GET", "/forecast/methods", None, "viewer"),
     ("GET", f"/forecast/explain/{X}", None, "viewer"),
     ("GET", f"/forecast/history/{X}", None, "viewer"),
+    ("GET", "/forecast/latest", None, "viewer"),
+    ("GET", "/intelligence/demand-trend", None, "viewer"),
     ("POST", "/inventory/recommendation", {"product_id": X}, "viewer"),
     ("POST", "/risk/stockout", {"product_id": X}, "viewer"),
     ("POST", "/risk/stockout/batch", {}, "viewer"),
@@ -42,8 +44,12 @@ MATRIX = [
     ("GET", "/simulate/types", None, "viewer"),
     ("POST", "/simulate/scenario", {"product_id": X, "adjustments": [{"type": "demand_increase"}]}, "viewer"),
     ("GET", "/signals", None, "viewer"),
-    ("POST", "/signals", {"name": "n", "signal_type": "holiday", "start_date": "2025-01-01",
-                          "end_date": "2025-01-01", "magnitude": 0.1}, "analyst"),
+    (
+        "POST",
+        "/signals",
+        {"name": "n", "signal_type": "holiday", "start_date": "2025-01-01", "end_date": "2025-01-01", "magnitude": 0.1},
+        "analyst",
+    ),
     ("POST", "/signals/upload", "FILE", "analyst"),
     ("DELETE", f"/signals/{X}", None, "analyst"),
     ("POST", "/train", {"max_epochs": 1}, "analyst"),
@@ -66,8 +72,18 @@ MATRIX = [
     ("GET", "/ops/status", None, "analyst"),
 ]
 
-PUBLIC = {"/health/live", "/health/ready", "/health", "/metrics", "/auth/login", "/auth/refresh", "/auth/logout",
-          "/docs", "/openapi.json", "/docs/oauth2-redirect"}
+PUBLIC = {
+    "/health/live",
+    "/health/ready",
+    "/health",
+    "/metrics",
+    "/auth/login",
+    "/auth/refresh",
+    "/auth/logout",
+    "/docs",
+    "/openapi.json",
+    "/docs/oauth2-redirect",
+}
 EXTRA_PREFIXES = ("/shopify", "/chat")  # covered by their own test modules
 
 
@@ -96,8 +112,15 @@ def test_every_route_is_in_the_matrix(app):
         if path in PUBLIC or path.startswith(EXTRA_PREFIXES):
             continue
         norm = path
-        for param in ("{user_id}", "{dataset_id}", "{product_id}", "{signal_id}", "{job_id}", "{version_id}",
-                      "{alert_id}"):
+        for param in (
+            "{user_id}",
+            "{dataset_id}",
+            "{product_id}",
+            "{signal_id}",
+            "{job_id}",
+            "{version_id}",
+            "{alert_id}",
+        ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:
             if (method, norm) not in covered:

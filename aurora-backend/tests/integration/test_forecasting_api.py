@@ -210,3 +210,14 @@ def test_drift_endpoint(client, org, loaded):
     d = client.get("/intelligence/drift", headers=org.h("viewer")).json()
     assert len(d["items"]) == 3
     assert all("ks_statistic" in i or i["status"] == "insufficient_data" for i in d["items"])
+
+
+def test_latest_forecasts_and_demand_trend(client, org, loaded):
+    pid = loaded["SKU-001"]["id"]
+    client.post("/forecast", json={"product_id": pid, "horizon": 7}, headers=org.h())
+    client.post("/forecast", json={"product_id": pid, "horizon": 14}, headers=org.h())
+    items = client.get("/forecast/latest", headers=org.h("viewer")).json()["items"]
+    assert len(items) == 1 and items[0]["horizon"] == 14 and items[0]["next_7d_units"] > 0
+    t = client.get("/intelligence/demand-trend?days=30", headers=org.h("viewer")).json()
+    assert t["as_of"] == "2025-06-30" and len(t["points"]) == 30
+    assert t["points"][-1]["date"] == "2025-06-30" and t["points"][-1]["units"] > 0

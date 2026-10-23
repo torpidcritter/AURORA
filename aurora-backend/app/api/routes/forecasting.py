@@ -91,6 +91,79 @@ def forecast_history(
     ]
 
 
+@router.get("/forecast/latest")
+def latest_forecasts(
+    limit: int = Query(200, ge=1, le=500), p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)
+) -> dict:
+    """Most recent stored forecast per product (one row each)."""
+    from sqlalchemy import func as sa_func
+
+    from app.db.models import Product
+
+    latest = (
+        select(ForecastRun.product_id, sa_func.max(ForecastRun.created_at).label("ts"))
+        .where(ForecastRun.org_id == p.org_id)
+        .group_by(ForecastRun.product_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(ForecastRun, Product.sku, Product.name)
+        .join(latest, (latest.c.product_id == ForecastRun.product_id) & (latest.c.ts == ForecastRun.created_at))
+        .join(Product, Product.id == ForecastRun.product_id)
+        .order_by(Product.sku)
+        .limit(limit)
+    ).all()
+    items = []
+    for run, sku, name in rows:
+        pts = run.payload.get("points", [])
+        items.append(
+            {
+                "product_id": str(run.product_id),
+                "sku": sku,
+                "name": name,
+                "method": run.method,
+                "horizon": run.horizon,
+                "coverage": run.coverage,
+                "created_at": run.created_at.isoformat(),
+                "as_of": run.payload.get("as_of"),
+                "next_7d_units": round(sum(x["yhat"] for x in pts[:7]), 2),
+                "interval_calibrated": run.payload.get("interval", {}).get("calibrated"),
+                "empirical_coverage": run.payload.get("interval", {}).get("empirical_coverage"),
+            }
+        )
+    return {"items": items}
+
+
+@router.get("/intelligence/demand-trend")
+def demand_trend(
+    days: int = Query(90, ge=7, le=730), p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)
+) -> dict:
+    """Organisation-wide units sold per day (observed rows only) for the last `days` days ending at the latest sale."""
+    from datetime import timedelta
+
+    from sqlalchemy import func as sa_func
+
+    from app.db.models import SalesRecord
+    from app.services.product_service import org_as_of
+
+    as_of = org_as_of(db, p.org_id)
+    if as_of is None:
+        return {"as_of": None, "points": []}
+    start = as_of - timedelta(days=days - 1)
+    rows = db.execute(
+        select(SalesRecord.sale_date, sa_func.sum(SalesRecord.quantity))
+        .where(SalesRecord.org_id == p.org_id, SalesRecord.sale_date >= start)
+        .group_by(SalesRecord.sale_date)
+        .order_by(SalesRecord.sale_date)
+    ).all()
+    by_day = {d: float(q) for d, q in rows}
+    pts = [
+        {"date": (start + timedelta(days=i)).isoformat(), "units": round(by_day.get(start + timedelta(days=i), 0.0), 2)}
+        for i in range(days)
+    ]
+    return {"as_of": as_of.isoformat(), "points": pts}
+
+
 @router.post("/inventory/recommendation")
 def inventory_recommendation(
     body: InventoryIn, p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)

@@ -21,6 +21,10 @@ extend-exclude = ["alembic/versions"]
 select = ["E", "F", "W", "I", "B", "UP", "S", "BLE"]
 ignore = ["S101", "B008", "S311", "S608"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+known-third-party = ["alembic"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S108", "B017"]
 
