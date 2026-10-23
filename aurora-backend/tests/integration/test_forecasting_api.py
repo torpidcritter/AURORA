@@ -108,9 +108,10 @@ def test_risk_batch_kpi_recommendations(client, org, loaded):
 
 
 def test_backtest_endpoint(client, org, loaded):
-    r = client.post(
-        "/intelligence/backtest", json={"product_id": loaded["SKU-001"]["id"], "horizon": 7}, headers=org.h("viewer")
-    )
+    body = {"product_id": loaded["SKU-001"]["id"], "horizon": 7}
+    # Running backtests is an analyst capability; viewers see cached results through /forecast instead.
+    assert client.post("/intelligence/backtest", json=body, headers=org.h("viewer")).status_code == 403
+    r = client.post("/intelligence/backtest", json=body, headers=org.h("analyst"))
     assert r.status_code == 200, r.text
     b = r.json()
     assert set(b["summary"]["methods"]) == {"sma", "ses", "holt_winters", "seasonal_naive", "croston_sba"}

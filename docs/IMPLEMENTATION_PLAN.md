@@ -44,20 +44,28 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Celery worker/Beat config (acks_late, prefetch 1, time limits, separate queues)
 - [x] Model registry: semver versions, single active pointer, gated promotion, rollback, checksum-verified artifacts
 - [x] Monitoring: stockout/drift/staleness/accuracy alerts, dedup + escalation + auto-resolve, idempotent delivery
-- [~] Real Celery worker + Redis broker run (eager mode is tested; live worker test is next)
+- [x] Real Celery worker + Redis broker run (Playwright E2E trains a model through a live worker)
 
-## P6 Frontend (next)
-- [ ] Next.js 14 app shell, BFF auth (httpOnly cookies, CSRF), typed API client
-- [ ] Pages: login, dashboard, upload wizard, products, product detail, forecasts, inventory, risk matrix, scenarios,
-      alerts, model diagnostics/drift, assistant, users, audit/ops
-- [ ] Component tests (Vitest + Testing Library), Playwright E2E against the real backend
+## P6 Frontend
+- [x] Next.js 16 app shell, BFF auth (httpOnly cookies, CSRF), typed API client (ADR-014)
+- [x] Pages: login, dashboard, upload wizard, products, product detail, forecasts, inventory, risk matrix, scenarios,
+      signals, alerts, models/drift, assistant, users, audit, system & integrations
+- [x] Unit tests (Vitest + Testing Library) and Playwright E2E against the real backend and worker
 
 ## P7 Integrations
-- [ ] Claude assistant with authorised, validated tools + deterministic fallback
-- [ ] Shopify OAuth (state, HMAC, shop validation), signed webhooks with replay/idempotency, order → sales mapping
+- [~] Claude assistant with authorised, validated tools + deterministic fallback (tested with a fake client; no real API key used)
+- [~] Shopify OAuth and signed, idempotent webhooks; order → sales mapping (tested with signed fixtures; no real store used)
+- [ ] Shopify refund/cancellation reconciliation
 
 ## P8 Release
-- [ ] Dockerfiles + docker-compose (Postgres, Redis, MinIO, API, worker, beat, frontend)
-- [ ] CI workflow (lint, type-check, tests, build, pip-audit/npm audit, secret scan)
-- [ ] Load test (Locust) with a bounded run; backup/restore drill; deployment & rollback runbook
-- [ ] Release report
+- [~] Dockerfiles + docker-compose (written; not built here, no Docker daemon)
+- [x] CI workflow: lint, type-check, migrations check, tests, build, pip-audit / npm audit, Playwright E2E
+- [x] Load test (Locust) with a bounded run; single-flight evaluation cache from its findings (ADR-017)
+- [x] Backup/restore drill (pg_dump/pg_restore + artifact checksums); deployment, upgrade and rollback runbook
+- [x] Release report (`docs/RELEASE_REPORT.md`)
+
+## Follow-ups
+- [ ] Build and run images in CI; container image scan
+- [ ] Purge job for expired refresh tokens and OAuth states
+- [ ] Bulk re-encrypt command for `TOKEN_ENCRYPTION_KEYS` rotation
+- [ ] Self-service password reset by email

@@ -15,6 +15,7 @@ from app.api.deps import Principal, client_ip, require
 from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import AppError, Unauthorized, ValidationFailed
+from app.core.metrics import WEBHOOKS
 from app.core.security import Perm
 from app.db.session import get_db
 from app.services import audit, shopify_service
@@ -110,6 +111,8 @@ def webhook(
     h = request.headers
     # Verify the signature before anything else: unauthenticated input gets no further than this line.
     if not shopify_service.verify_webhook_hmac(body, h.get("x-shopify-hmac-sha256")):
+        WEBHOOKS.labels("shopify", "bad_signature").inc()
+        log.warning("shopify webhook rejected: invalid signature")
         raise Unauthorized("Invalid webhook signature")
     topic = f"{resource}/{event}"
     if h.get("x-shopify-topic") and h.get("x-shopify-topic") != topic:
@@ -127,5 +130,7 @@ def webhook(
     except Exception:
         # Roll back the event row too, so Shopify's retry is processed rather than treated as a duplicate.
         db.rollback()
+        WEBHOOKS.labels("shopify", "error").inc()
         raise
+    WEBHOOKS.labels("shopify", "duplicate" if res.get("duplicate") else "processed").inc()
     return {"ok": True, **res}

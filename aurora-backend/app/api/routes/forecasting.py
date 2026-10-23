@@ -229,7 +229,9 @@ def recommendations(
 
 
 @router.post("/intelligence/backtest")
-def backtest(body: BacktestIn, p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> dict:
+def backtest(
+    body: BacktestIn, p: Principal = Depends(require(Perm.run_backtests)), db: Session = Depends(get_db)
+) -> dict:
     _throttle(p, "backtest", 20)
     get_product(db, p.org_id, body.product_id)
     y, _ = series.load_series(db, p.org_id, body.product_id)

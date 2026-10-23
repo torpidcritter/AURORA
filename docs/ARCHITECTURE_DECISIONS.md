@@ -6,7 +6,7 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
 ## ADR-001 Monorepo with a modular FastAPI backend and a Next.js frontend
 - **Context:** the repository was empty. The spec names `aurora-backend/` and `aurora-frontend/`.
 - **Decision:** one repository with `aurora-backend/` (FastAPI, SQLAlchemy 2, Alembic, Celery) and `aurora-frontend/`
-  (Next.js 14 App Router). The backend is one deployable plus separate Celery worker and Beat processes, not microservices.
+  (Next.js App Router; version 16, see ADR-014). The backend is one deployable plus separate Celery worker and Beat processes, not microservices.
 - **Layers:** `api/routes` (HTTP only) → `services` (use cases, transactions) → `domain` and `ml` (pure logic) → `db` / `storage`.
 
 ## ADR-002 PostgreSQL only, synchronous SQLAlchemy in a threadpool
@@ -110,3 +110,58 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
 ## ADR-013 Python 3.13 / dependency versions
 - The sandbox ships Python 3.13, and the CPU-only PyTorch index is blocked by its network policy, so the standard PyPI torch
   wheel (2.14) is used. Versions are pinned in `requirements.txt` from a working install.
+
+## ADR-014 Frontend: Next.js 16, React 19, Tailwind 4, SWR; the browser never holds a token
+- The spec says Next.js 14. The current stable line (16.4) was used instead, because 14 is outside its support window and would ship without security fixes.
+  Visible differences: route protection lives in `proxy.ts` (the renamed middleware), dynamic `params` are Promises,
+  and Tailwind 4 is configured in CSS.
+- The browser talks only to the same-origin BFF. `/api/auth/*` sets `aurora_at`/`aurora_rt` as `HttpOnly`,
+  `SameSite=Strict` cookies (always `Secure` in production builds). `/api/proxy/*` adds the bearer token server-side,
+  refreshes once on 401, and refuses `metrics`, `docs`, `redoc` and `openapi.json`.
+- CSRF: a mutation must carry a matching `Origin` and the custom `x-aurora-csrf: 1` header, which a cross-site form
+  cannot send. `SameSite=Strict` is a second layer.
+- The UI hides actions a role cannot perform, but that is a convenience. Every permission is enforced by the API, and
+  the E2E suite checks that a viewer's direct write calls fail with 403.
+- No `NEXT_PUBLIC_*` variables exist. `API_URL` is read only on the server (`import "server-only"`).
+
+## ADR-015 Assistant: Claude with read-only, permission-checked tools and a deterministic fallback
+- `POST /chat` runs a manual tool loop (at most 5 rounds) over four read tools: products, risk summary,
+  alerts, drift. Each tool runs as the calling user, inside their organisation, and re-checks the permission even
+  though the tool list is already filtered by role. The model cannot write data.
+- Model `claude-opus-5-5` with `effort` configurable (default low) and the server-side fallback beta enabled, so an
+  overloaded model falls back on Anthropic's side before our own fallback is needed.
+- Without an API key, or on a refusal, an empty answer or an API error, the endpoint answers from deterministic
+  templates over the same tools and says so (`mode: "fallback"`). It never invents numbers.
+- The audit log records the mode and the tools used, never the question text, which may contain business details.
+- Rate limit: 20 requests per minute per user. Message up to 2,000 characters; up to 10 history turns, normalised to
+  alternate roles.
+
+## ADR-016 Shopify: verified installs, signed idempotent webhooks, encrypted tokens
+- Install: shop domain must match `^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$`; the OAuth `state` is single-use,
+  expires in 10 minutes and is consumed atomically; the callback HMAC and timestamp are checked before the code is
+  exchanged over HTTPS. A shop connected to one organisation cannot be claimed by another.
+- Webhooks: the body HMAC is checked first (constant-time, current or previous secret to allow rotation). Deliveries
+  older than one hour are refused. The webhook id is stored in the same transaction as the sales upsert, so a
+  redelivery is a no-op and a failed delivery rolls back fully and is retried by Shopify.
+- Orders become daily sales rows with `source="shopify"`; new SKUs are created with `inventory_known=false` so no
+  reorder advice is given until stock is entered. Test orders are skipped. `app/uninstalled` and `shop/redact` delete
+  the access token; the customer GDPR topics are acknowledged because Aurora stores no customer data.
+- Access tokens are encrypted with Fernet keys from `TOKEN_ENCRYPTION_KEYS` (newest first, older keys still decrypt).
+  Production refuses to start with Shopify enabled and no keys.
+- Not done: edits, cancellations and refunds are not reconciled; Shopify and uploaded sales for the same period add up.
+
+## ADR-017 Shared, single-flight cache for forecast evaluation
+- Choosing a method for a product needs rolling-origin backtests of every baseline, which takes seconds. Under load,
+  concurrent requests for the same product all recomputed it (cold `/forecast` median 46 s at 20 users).
+- The result is now cached in Redis (`aurora:eval:{org}:{product}:{horizon}:{data fingerprint}`, 24 h) on top of the
+  existing database cache, and a Redis lock makes one request compute while the others wait and then read the cache.
+  The data fingerprint changes when sales change, so stale results are never served.
+- If Redis is down, the code computes without the lock (fails open). Correctness does not depend on the lock; only
+  duplicate work does.
+
+## ADR-018 Client addresses behind proxies
+- Rate limits and audit entries use the client address. The BFF forwards only the **right-most** `X-Forwarded-For`
+  entry, which is the one the trusted reverse proxy added; anything to its left is client-controlled. The API trusts
+  forwarded headers only from the addresses in uvicorn's `--forwarded-allow-ips`.
+- In Docker Compose the API port is reachable only from the compose network and `127.0.0.1`, so all sources are
+  trusted there. Any other deployment must narrow `FORWARDED_ALLOW_IPS` to its proxy (see `RUNBOOK.md`).

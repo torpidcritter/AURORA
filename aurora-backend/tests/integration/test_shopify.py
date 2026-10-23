@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from app.core import crypto
 from app.core.config import get_settings
+from app.core.metrics import WEBHOOKS
 from app.db.models import Product, SalesRecord, ShopifyShop
 from app.services import shopify_service
 
@@ -139,13 +140,19 @@ def test_shop_cannot_be_claimed_by_second_org(client, org, other_org, configured
     assert client.post("/shopify/install", json={"shop": SHOP}, headers=other_org.h()).status_code == 409
 
 
+def _webhook_count(outcome: str) -> float:
+    return WEBHOOKS.labels("shopify", outcome)._value.get()
+
+
 def test_order_webhook_ingests_once_per_delivery(client, org, other_org, configured, db):
     connect(client, org)
+    processed, dupes = _webhook_count("processed"), _webhook_count("duplicate")
     r = webhook(client, ORDER)
     assert r.status_code == 200, r.text
     assert r.json() == {"ok": True, "duplicate": False, "lines": 2, "skipped_lines": 1, "date": "2026-10-20"}
     # Redelivery with the same webhook id is acknowledged but not applied again.
     assert webhook(client, ORDER).json() == {"ok": True, "duplicate": True}
+    assert (_webhook_count("processed") - processed, _webhook_count("duplicate") - dupes) == (1, 1)
     # A different delivery on the same day adds to the daily total.
     webhook(client, {**ORDER, "id": 2, "line_items": [{"sku": "SHOP-A", "quantity": 5}]}, wid="wh-2")
     rows = {
@@ -164,7 +171,9 @@ def test_order_webhook_ingests_once_per_delivery(client, org, other_org, configu
 
 def test_webhook_signature_and_freshness(client, org, configured, db):
     connect(client, org)
+    bad = _webhook_count("bad_signature")
     assert webhook(client, ORDER, secret="wrong").status_code == 401
+    assert _webhook_count("bad_signature") - bad == 1
     assert webhook(client, ORDER, wid="old", triggered=datetime.now(UTC) - timedelta(hours=3)).status_code == 403
     # Tampering with the body after signing fails verification.
     body = json.dumps(ORDER).encode()
