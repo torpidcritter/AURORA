@@ -20,6 +20,7 @@ ROUTERS = [
     ("app.api.routes.data", "router"),
     ("app.api.routes.forecasting", "router"),
     ("app.api.routes.ops", "router"),
+    ("app.api.routes.assistant", "router"),
 ]
 
 

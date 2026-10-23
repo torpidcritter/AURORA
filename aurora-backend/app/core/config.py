@@ -90,8 +90,12 @@ class Settings(BaseSettings):
 
     # Integrations
     anthropic_api_key: SecretStr | None = None
-    anthropic_model: str = "claude-sonnet-4-5"
+    anthropic_model: str = "claude-opus-5-5"
     anthropic_timeout_s: float = 30.0
+    anthropic_max_tokens: int = 4000
+    anthropic_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    # Server-side refusal fallback (Claude API only; disable on Bedrock/Vertex/Foundry gateways).
+    anthropic_server_fallback: bool = True
     shopify_api_key: str | None = None
     shopify_api_secret: SecretStr | None = None
     shopify_redirect_url: str = "http://localhost:8100/shopify/callback"
