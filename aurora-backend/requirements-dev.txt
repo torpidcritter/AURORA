@@ -5,5 +5,5 @@ pytest-cov==7.1.0
 fakeredis==2.40.0
 ruff==0.17.2
 mypy==2.4.0
-pip-audit
-locust
+pip-audit==2.10.1
+locust==2.47.0

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import json
+import logging
 import threading
 import uuid
 from dataclasses import dataclass
@@ -15,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ValidationFailed
 from app.core.metrics import FORECASTS_SERVED
+from app.core.redis_client import get_redis
 from app.db.models import BacktestResult, ExternalSignal, ForecastRun, Product
 from app.ml import backtesting
 from app.ml.conformal import per_step_quantiles
@@ -30,6 +34,10 @@ FAST_METHODS = ("sma", "ses", "seasonal_naive", "croston_sba")
 MAX_HORIZON = 90
 BACKTEST_FOLDS = 4
 CAL_ORIGINS = 42
+
+log = logging.getLogger(__name__)
+EVAL_CACHE_TTL_S = 24 * 3600
+EVAL_LOCK_TIMEOUT_S = 300
 
 _inference_lock = threading.Lock()  # MC dropout toggles module state; serialise use of shared models
 
@@ -50,19 +58,56 @@ def baseline_evaluation(
     """Rolling-origin backtest (K=4) for metrics + dense-origin residuals for conformal calibration.
     Cached in backtest_results by data fingerprint so repeated calls are cheap."""
     fp = fingerprint(y) + ("-fast" if fast else "")
-    if db is not None:
-        cached = db.scalar(
-            select(BacktestResult)
-            .where(
-                BacktestResult.product_id == product_id,
-                BacktestResult.horizon == horizon,
-                BacktestResult.org_id == org_id,
-            )
-            .order_by(BacktestResult.created_at.desc())
-            .limit(1)
+    if db is None:
+        return _compute_evaluation(db, org_id, product_id, y, horizon, fast, fp)
+    cached = _cached_evaluation(db, org_id, product_id, horizon, fp)
+    if cached is not None:
+        return cached
+    # Single flight across processes: concurrent cache misses for the same series wait for one computation
+    # instead of all recomputing (which saturates the CPU under load). Fails open if Redis is unavailable.
+    key = f"aurora:eval:{org_id}:{product_id}:{horizon}:{fp}"
+    lock = None
+    with contextlib.suppress(Exception):
+        lock = get_redis().lock(key + ":lock", timeout=EVAL_LOCK_TIMEOUT_S, blocking_timeout=120)
+        if not lock.acquire():
+            lock = None
+    try:
+        cached = _cached_evaluation(db, org_id, product_id, horizon, fp)
+        if cached is not None:
+            return cached
+        return _compute_evaluation(db, org_id, product_id, y, horizon, fast, fp)
+    finally:
+        if lock is not None:
+            with contextlib.suppress(Exception):
+                lock.release()
+
+
+def _cached_evaluation(db: Session, org_id: uuid.UUID, product_id: uuid.UUID, horizon: int, fp: str) -> dict | None:
+    key = f"aurora:eval:{org_id}:{product_id}:{horizon}:{fp}"
+    try:
+        raw = get_redis().get(key)
+        if raw:
+            return json.loads(raw)
+    except Exception:  # noqa: BLE001 - cache is an optimisation; fall back to the database
+        log.debug("evaluation cache unavailable", exc_info=True)
+    cached = db.scalar(
+        select(BacktestResult)
+        .where(
+            BacktestResult.product_id == product_id,
+            BacktestResult.horizon == horizon,
+            BacktestResult.org_id == org_id,
         )
-        if cached is not None and cached.payload.get("fingerprint") in (fp, fp.removesuffix("-fast")):
-            return cached.payload
+        .order_by(BacktestResult.created_at.desc())
+        .limit(1)
+    )
+    if cached is not None and cached.payload.get("fingerprint") in (fp, fp.removesuffix("-fast")):
+        return cached.payload
+    return None
+
+
+def _compute_evaluation(
+    db: Session | None, org_id: uuid.UUID, product_id: uuid.UUID, y: pd.Series, horizon: int, fast: bool, fp: str
+) -> dict:
     methods = FAST_METHODS if fast else STAT_METHODS
     values = y.values.astype(float)
     fns = backtesting.stat_forecasters(methods)
@@ -95,6 +140,11 @@ def baseline_evaluation(
             )
         )
         db.flush()
+        # Publish before the request commits so waiters on the single-flight lock see it immediately.
+        with contextlib.suppress(Exception):
+            get_redis().set(
+                f"aurora:eval:{org_id}:{product_id}:{horizon}:{fp}", json.dumps(payload), ex=EVAL_CACHE_TTL_S
+            )
     return payload
 
 

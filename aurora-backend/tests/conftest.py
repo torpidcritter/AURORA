@@ -14,7 +14,14 @@ os.environ["ARTIFACT_DIR"] = tempfile.mkdtemp(prefix="aurora-test-artifacts-")
 os.environ["CELERY_TASK_ALWAYS_EAGER"] = "true"
 os.environ["LOG_JSON"] = "false"
 os.environ["LOG_LEVEL"] = "WARNING"
-os.environ.pop("ANTHROPIC_API_KEY", None)
+for _k in (
+    "ANTHROPIC_API_KEY",
+    "SHOPIFY_API_KEY",
+    "SHOPIFY_API_SECRET",
+    "SHOPIFY_API_SECRET_PREVIOUS",
+    "TOKEN_ENCRYPTION_KEYS",
+):
+    os.environ.pop(_k, None)
 
 import fakeredis  # noqa: E402
 import pytest  # noqa: E402
