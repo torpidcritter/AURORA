@@ -1,0 +1,111 @@
+"""Scheduled monitoring: stockout risk, demand drift, model staleness and accuracy -> alerts.
+
+Retraining policy: monitors *recommend* retraining by raising an alert. They never auto-promote a model;
+promotion always goes through the validation gate in model_registry.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.config import get_settings
+from app.db.models import Product
+from app.ml import drift
+from app.services import alert_service, inventory_service, model_registry, series
+
+
+def run_for_org(db: Session, org_id: uuid.UUID) -> dict:
+    s = get_settings()
+    out = {"stockout_alerts": 0, "drift_alerts": 0, "model_alerts": 0, "resolved": 0}
+    skus = dict(db.execute(select(Product.id, Product.sku).where(Product.org_id == org_id)).tuples().all())
+
+    active_stockout: set[str] = set()
+    for r in inventory_service.risk_matrix(db, org_id):
+        if r.get("risk_level") in ("critical", "high"):
+            key = f"stockout:{r['product_id']}"
+            active_stockout.add(key)
+            dts = r.get("days_until_stockout")
+            alert_service.upsert(
+                db,
+                org_id=org_id,
+                kind="stockout_risk",
+                severity=r["risk_level"],
+                dedup_key=key,
+                product_id=uuid.UUID(r["product_id"]),
+                title=f"{r['sku']}: {r['risk_level']} stockout risk"
+                + (f" (~{dts:.1f} days of stock)" if dts is not None else ""),
+                message=r.get("narrative", ""),
+                details={
+                    k: r.get(k)
+                    for k in (
+                        "urgency",
+                        "days_until_stockout",
+                        "stockout_probability_lead_time",
+                        "recommended_order_qty",
+                        "reorder_point",
+                        "on_hand",
+                    )
+                },
+            )
+            out["stockout_alerts"] += 1
+    out["resolved"] += alert_service.resolve_where_cleared(db, org_id, "stockout:", active_stockout)
+
+    active_drift: set[str] = set()
+    for pid, y in series.load_many(db, org_id).items():
+        d = drift.detect(y.values, ks_threshold=s.drift_ks_threshold, mean_threshold=s.drift_mean_change_threshold)
+        if d["drift"]:
+            key = f"drift:{pid}"
+            active_drift.add(key)
+            alert_service.upsert(
+                db,
+                org_id=org_id,
+                kind="demand_drift",
+                severity="medium",
+                dedup_key=key,
+                product_id=pid,
+                title=f"{skus.get(pid, pid)}: demand distribution shifted",
+                message="; ".join(d["reasons"]) + ". Consider retraining and reviewing inventory parameters.",
+                details=d,
+            )
+            out["drift_alerts"] += 1
+    out["resolved"] += alert_service.resolve_where_cleared(db, org_id, "drift:", active_drift)
+
+    active = model_registry.get_active(db, org_id)
+    model_keys: set[str] = set()
+    if active is not None:
+        age = (datetime.now(UTC) - (active.promoted_at or active.created_at)).days
+        if age > s.model_max_age_days:
+            model_keys.add("model:stale")
+            alert_service.upsert(
+                db,
+                org_id=org_id,
+                kind="model_stale",
+                severity="medium",
+                dedup_key="model:stale",
+                title=f"Active model {active.version} is {age} days old",
+                message=f"Retraining is recommended after {s.model_max_age_days} days.",
+                details={"age_days": age, "version": active.version},
+            )
+            out["model_alerts"] += 1
+        wape = active.metrics.get("transformer_wape")
+        if wape is not None and wape > s.accuracy_wape_threshold:
+            model_keys.add("model:accuracy")
+            alert_service.upsert(
+                db,
+                org_id=org_id,
+                kind="model_accuracy",
+                severity="medium",
+                dedup_key="model:accuracy",
+                title=f"Model {active.version} WAPE {wape:.1f}% exceeds {s.accuracy_wape_threshold}%",
+                message="Accuracy on held-out data is below target; review data quality and retrain.",
+                details={"wape": wape},
+            )
+            out["model_alerts"] += 1
+    out["resolved"] += alert_service.resolve_where_cleared(db, org_id, "model:", model_keys)
+    db.commit()
+    alert_service.refresh_gauge(db)
+    return out

@@ -1,0 +1,40 @@
+"""Celery application. Run workers and Beat as separate processes in production:
+
+celery -A app.workers.celery_app worker -Q default,training --concurrency=2
+celery -A app.workers.celery_app beat
+"""
+
+from __future__ import annotations
+
+from celery import Celery
+from celery.schedules import crontab
+from kombu import Queue
+
+from app.core.config import get_settings
+
+s = get_settings()
+celery_app = Celery("aurora", broker=s.broker_url, backend=s.result_backend, include=["app.workers.tasks"])
+celery_app.conf.update(
+    task_always_eager=s.celery_task_always_eager,
+    task_eager_propagates=False,
+    task_acks_late=True,  # a task is only acked after it finishes, so a crashed worker's task is redelivered
+    task_reject_on_worker_lost=True,
+    worker_prefetch_multiplier=1,
+    task_default_queue="default",
+    task_queues=(Queue("default"), Queue("training")),
+    task_routes={"aurora.run_job": {"queue": "default"}, "aurora.run_training_job": {"queue": "training"}},
+    task_soft_time_limit=s.training_time_limit_s + 60,
+    task_time_limit=s.training_time_limit_s + 180,
+    broker_transport_options={"visibility_timeout": s.training_time_limit_s + 600},
+    broker_connection_retry_on_startup=True,
+    result_expires=86400,
+    worker_max_tasks_per_child=50,  # bound memory growth from PyTorch
+    timezone="UTC",
+    beat_schedule={
+        "monitor-all-orgs": {"task": "aurora.monitor_all", "schedule": crontab(minute=0)},
+        "dispatch-alerts": {"task": "aurora.poll_and_dispatch_alerts", "schedule": 300.0},
+        "reap-stale-jobs": {"task": "aurora.reap_stale_jobs", "schedule": 600.0},
+        "cleanup-audit": {"task": "aurora.cleanup_audit_logs", "schedule": crontab(hour=3, minute=15)},
+        "nightly-batch-forecast": {"task": "aurora.batch_forecast_all", "schedule": crontab(hour=2, minute=0)},
+    },
+)
