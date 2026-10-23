@@ -28,3 +28,6 @@ next-env.d.ts
 
 # OS
 .DS_Store
+
+# Local Redis snapshots
+dump.rdb

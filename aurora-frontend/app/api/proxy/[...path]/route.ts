@@ -4,6 +4,7 @@ import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   apiUrl,
+  clientAddress,
   clearAuthCookies,
   isSameOriginMutation,
   refreshTokens,
@@ -44,7 +45,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
   }
 
   const target = `${apiUrl()}/${joined}${req.nextUrl.search}`;
-  const forwardedFor = req.headers.get("x-forwarded-for");
+  const forwardedFor = clientAddress(req);
   let access = req.cookies.get(ACCESS_COOKIE)?.value ?? null;
   const refresh = req.cookies.get(REFRESH_COOKIE)?.value ?? null;
   let rotated: TokenPair | null = null;

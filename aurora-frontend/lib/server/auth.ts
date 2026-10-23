@@ -50,6 +50,16 @@ export function isSameOriginMutation(req: NextRequest): boolean {
   return originHost === host && req.headers.get(CSRF_HEADER) === "1";
 }
 
+/** The client address as seen by the trusted reverse proxy in front of this app.
+ *  Proxies append the address they saw, so only the right-most entry is trustworthy; anything to its left can be
+ *  forged by the client. Deploy behind a proxy that sets or appends X-Forwarded-For (see docs/RUNBOOK.md). */
+export function clientAddress(req: NextRequest): string | null {
+  const xff = req.headers.get("x-forwarded-for");
+  if (!xff) return null;
+  const last = xff.split(",").pop()?.trim() ?? "";
+  return /^[0-9a-fA-F:.]{2,45}$/.test(last) ? last : null;
+}
+
 const inflight = new Map<string, Promise<RefreshResult>>();
 
 export type RefreshResult =

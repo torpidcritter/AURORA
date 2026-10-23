@@ -92,3 +92,14 @@ describe("refreshTokens", () => {
     await expect(refreshTokens("other-token", null)).resolves.toEqual({ ok: false, status: 503, code: "backend_unreachable" });
   });
 });
+
+describe("clientAddress", () => {
+  it("uses only the right-most X-Forwarded-For hop (the one the trusted proxy added)", async () => {
+    const { clientAddress } = await import("@/lib/server/auth");
+    const mk = (xff?: string) => req("http://app.test/x", { headers: xff ? { "x-forwarded-for": xff } : {} });
+    expect(clientAddress(mk("1.2.3.4, 10.0.0.7"))).toBe("10.0.0.7");
+    expect(clientAddress(mk("2001:db8::1"))).toBe("2001:db8::1");
+    expect(clientAddress(mk("1.2.3.4, not-an-ip<script>"))).toBeNull();
+    expect(clientAddress(mk())).toBeNull();
+  });
+});

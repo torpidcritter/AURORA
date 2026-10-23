@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { apiUrl, isSameOriginMutation, setAuthCookies, type TokenPair } from "@/lib/server/auth";
+import { apiUrl, clientAddress, isSameOriginMutation, setAuthCookies, type TokenPair } from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (typeof payload.email !== "string" || typeof payload.password !== "string") {
     return NextResponse.json({ error: { code: "validation_error", message: "Email and password are required" } }, { status: 422 });
   }
-  const fwd = req.headers.get("x-forwarded-for");
+  const fwd = clientAddress(req);
   let upstream: Response;
   try {
     upstream = await fetch(`${apiUrl()}/auth/login`, {

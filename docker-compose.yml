@@ -1,0 +1,115 @@
+# Local / single-host deployment of the full Aurora stack.
+#   cp .env.example .env   # then fill in the required secrets
+#   docker compose up -d --build
+#   docker compose run --rm api python -m app.cli bootstrap     # first admin (once)
+# Ports bind to 127.0.0.1 only; put a TLS-terminating reverse proxy in front for remote access.
+name: aurora
+
+x-backend: &backend
+  build: ./aurora-backend
+  image: aurora-backend:local
+  restart: unless-stopped
+  environment: &backend-env
+    ENVIRONMENT: ${ENVIRONMENT:-production}
+    DATABASE_URL: postgresql+psycopg://aurora:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/aurora
+    REDIS_URL: redis://redis:6379/0
+    SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+    API_CORS_ORIGINS: ${PUBLIC_URL:-http://localhost:3100}
+    FRONTEND_URL: ${PUBLIC_URL:-http://localhost:3100}
+    BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+    BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    SHOPIFY_API_KEY: ${SHOPIFY_API_KEY:-}
+    SHOPIFY_API_SECRET: ${SHOPIFY_API_SECRET:-}
+    SHOPIFY_REDIRECT_URL: ${SHOPIFY_REDIRECT_URL:-http://localhost:8100/shopify/callback}
+    TOKEN_ENCRYPTION_KEYS: ${TOKEN_ENCRYPTION_KEYS:-}
+    METRICS_TOKEN: ${METRICS_TOKEN:-}
+    ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    ARTIFACT_DIR: /data/artifacts
+  volumes:
+    - artifacts:/data/artifacts
+  depends_on:
+    db: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aurora
+      POSTGRES_USER: aurora
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aurora -d aurora"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Applies database migrations, then exits. In production run this step deliberately (see docs/RUNBOOK.md).
+  migrate:
+    <<: *backend
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+
+  api:
+    <<: *backend
+    environment:
+      <<: *backend-env
+      WEB_CONCURRENCY: ${API_WORKERS:-2}
+      # The web container is the only caller; trust X-Forwarded-For from the compose network only.
+      FORWARDED_ALLOW_IPS: "*"
+    ports:
+      - "127.0.0.1:8100:8100"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *backend
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "default,training", "--concurrency", "2", "--loglevel", "INFO"]
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  beat:
+    <<: *backend
+    command: ["celery", "-A", "app.workers.celery_app", "beat", "--loglevel", "INFO", "--schedule", "/tmp/celerybeat-schedule"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    build: ./aurora-frontend
+    image: aurora-frontend:local
+    restart: unless-stopped
+    environment:
+      API_URL: http://api:8100
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    ports:
+      - "127.0.0.1:3100:3100"
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  artifacts:
