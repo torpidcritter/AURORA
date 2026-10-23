@@ -114,6 +114,13 @@ test.describe.serial("Aurora end to end", () => {
     await ctx.close();
   });
 
+  test("assistant answers from real data (built-in mode without an API key)", async () => {
+    await page.goto("/assistant");
+    await page.getByRole("button", { name: "Which products are at risk of stocking out?" }).click();
+    await expect(page.getByText(/Stockout risk: \d+ critical/)).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/Built-in summary|Claude/).first()).toBeVisible();
+  });
+
   test("logout clears the session", async () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: /sign out|log out/i }).click();
