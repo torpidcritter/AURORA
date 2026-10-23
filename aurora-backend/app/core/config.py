@@ -98,10 +98,17 @@ class Settings(BaseSettings):
     anthropic_server_fallback: bool = True
     shopify_api_key: str | None = None
     shopify_api_secret: SecretStr | None = None
+    # Accepted for webhook/OAuth HMAC verification during a secret rotation; never used to sign.
+    shopify_api_secret_previous: SecretStr | None = None
+    shopify_api_version: str = "2025-07"
     shopify_redirect_url: str = "http://localhost:8100/shopify/callback"
     shopify_scopes: str = "read_orders,read_products"
     shopify_webhook_tolerance_s: int = 3600
     alert_webhook_url: str | None = None
+    frontend_url: str = "http://localhost:3100"
+    # Fernet key(s), comma-separated, newest first, used to encrypt third-party access tokens at rest.
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    token_encryption_keys: SecretStr | None = None
 
     metrics_token: SecretStr | None = Field(default=None, description="Bearer token required by /metrics when set")
 
@@ -125,6 +132,8 @@ class Settings(BaseSettings):
                 )
             if "*" in self.cors_origins:
                 raise ValueError("Wildcard CORS origins are not allowed outside development")
+            if self.shopify_api_key and not self.token_encryption_keys:
+                raise ValueError("TOKEN_ENCRYPTION_KEYS is required when the Shopify integration is enabled")
         return self
 
     @property

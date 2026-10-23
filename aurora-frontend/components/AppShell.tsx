@@ -73,7 +73,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { href: "/admin/users", label: "Users", icon: Users, perm: "manage_users" },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText, perm: "view_audit" },
-      { href: "/admin/ops", label: "System status", icon: Activity, perm: "view_ops" },
+      { href: "/admin/ops", label: "System & integrations", icon: Activity, perm: "view_ops" },
     ],
   },
 ];

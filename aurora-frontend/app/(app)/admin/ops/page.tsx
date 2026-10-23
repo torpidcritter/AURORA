@@ -1,6 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
 import useSWR from "swr";
+
+import { ShopifyCard } from "@/components/ShopifyCard";
 
 import { Badge, Card, ErrorState, LoadingBlock, Notice, PageHeader, Stat, Table, Td, Th } from "@/components/ui";
 import { fmtDateTime } from "@/lib/format";
@@ -20,7 +23,7 @@ export default function OpsPage() {
   if (!can("view_ops")) return <Notice tone="warn">Your role cannot view system status.</Notice>;
   return (
     <>
-      <PageHeader title="System status" description="Dependencies, background queues and recent job failures. Refreshes every 15 seconds." />
+      <PageHeader title="System status" description="Dependencies, background queues, recent job failures and integrations. Refreshes every 15 seconds." />
       {s.error ? (
         <ErrorState error={s.error} onRetry={() => s.mutate()} />
       ) : !s.data ? (
@@ -80,6 +83,13 @@ export default function OpsPage() {
               )}
             </Card>
           </div>
+          {can("manage_integrations") && (
+            <div className="mt-6">
+              <Suspense fallback={null}>
+                <ShopifyCard />
+              </Suspense>
+            </div>
+          )}
           <p className="mt-4 text-xs text-faint">Prometheus metrics are served by the API at /metrics and are not exposed through this app.</p>
         </>
       )}
