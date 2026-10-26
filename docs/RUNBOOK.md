@@ -170,7 +170,9 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 - Liveness `GET /health/live`; readiness `GET /health/ready` (DB, Redis and storage, 503 when one fails); summary `GET /health`.
 - Prometheus: scrape `api:8100/metrics` from inside the network with `Authorization: Bearer $METRICS_TOKEN`. Useful series:
   `aurora_http_requests_total` and `aurora_http_request_duration_seconds` (by route template, summed across all uvicorn
-  workers), `aurora_webhooks_total{outcome=processed|duplicate|bad_signature|error}`. Figures produced by the worker are
+  workers), `aurora_webhooks_total{outcome=processed|duplicate|bad_signature|rejected|error}`. Signed deliveries that are rejected
+  (too old, malformed) or fail also appear in the shop owner's *Audit log* as `shopify.webhook_failed`; unsigned requests
+  are only counted. Figures produced by the worker are
   read from Postgres and Redis at scrape time (cached 15 s), so they are right whichever process did the work:
   `aurora_forecast_jobs_total{kind,status}`, `aurora_jobs_in_progress{kind}`, `aurora_forecasts_total{method}`,
   `aurora_training_duration_seconds`, `aurora_active_alerts_total`, `aurora_queue_depth{queue}`. Being derived from

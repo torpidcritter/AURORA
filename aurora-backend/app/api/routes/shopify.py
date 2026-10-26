@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, client_ip, require
@@ -17,7 +18,8 @@ from app.core.config import get_settings
 from app.core.errors import AppError, Unauthorized, ValidationFailed
 from app.core.metrics import WEBHOOKS
 from app.core.security import Perm
-from app.db.session import get_db
+from app.db.models import ShopifyShop
+from app.db.session import get_db, session_scope
 from app.services import audit, shopify_service
 
 router = APIRouter(prefix="/shopify", tags=["shopify"])
@@ -144,10 +146,39 @@ def webhook(
             body=body,
         )
         db.commit()
-    except Exception:
+    except Exception as exc:
         # Roll back the event row too, so Shopify's retry is processed rather than treated as a duplicate.
         db.rollback()
-        WEBHOOKS.labels("shopify", "error").inc()
+        rejected = isinstance(exc, AppError) and exc.status_code < 500
+        WEBHOOKS.labels("shopify", "rejected" if rejected else "error").inc()
+        _record_failed_delivery(topic, h, exc, ip=client_ip(request))
         raise
     WEBHOOKS.labels("shopify", "duplicate" if res.get("duplicate") else "processed").inc()
     return {"ok": True, **res}
+
+
+def _record_failed_delivery(topic: str, h, exc: Exception, *, ip: str | None) -> None:  # type: ignore[no-untyped-def]
+    """Keep a record of a signed delivery that could not be applied, in its own transaction (the request's was rolled
+    back). It goes to the audit log of the shop's organisation, where admins can see it. Unsigned requests are only
+    counted in metrics, so forged traffic cannot fill the database."""
+    try:
+        with session_scope() as db2:
+            domain = (h.get("x-shopify-shop-domain") or "").strip().lower()[:255]
+            org_id = db2.scalar(select(ShopifyShop.org_id).where(ShopifyShop.shop_domain == domain)) if domain else None
+            audit.record(
+                db2,
+                "shopify.webhook_failed",
+                org_id=org_id,
+                resource_type="shopify_webhook",
+                resource_id=(h.get("x-shopify-webhook-id") or h.get("x-shopify-event-id") or "")[:100] or None,
+                outcome="failure",
+                ip=ip,
+                details={
+                    "topic": topic,
+                    "shop": domain or None,
+                    "error": exc.code if isinstance(exc, AppError) else type(exc).__name__,
+                    "message": (exc.message if isinstance(exc, AppError) else "internal error")[:200],
+                },
+            )
+    except Exception:  # noqa: BLE001 - never mask the original failure
+        log.exception("could not record failed shopify webhook delivery")

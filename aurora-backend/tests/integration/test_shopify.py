@@ -459,3 +459,21 @@ def test_refresh_webhooks_is_tenant_scoped(client, org, other_org, configured, d
     connect(client, org)
     shop_id = client.get("/shopify/shops", headers=org.h("admin")).json()["items"][0]["id"]
     assert client.post(f"/shopify/shops/{shop_id}/webhooks", headers=other_org.h("admin")).status_code == 404
+
+
+def test_failed_signed_deliveries_are_recorded_for_the_shop_owner(client, org, configured, db):
+    from app.db.models import AuditEvent
+
+    connect(client, org)
+    stale = datetime.now(UTC) - timedelta(hours=13)
+    assert webhook(client, ORDER, wid="late-1", triggered=stale).status_code == 403
+    assert webhook(client, ORDER, wid="forged", secret="wrong").status_code == 401  # unsigned: metrics only
+    rows = db.scalars(select(AuditEvent).where(AuditEvent.action == "shopify.webhook_failed")).all()
+    assert len(rows) == 1
+    ev = rows[0]
+    assert ev.org_id == org.org_id and ev.outcome == "failure" and ev.resource_id == "late-1"
+    assert ev.details["topic"] == "orders/create" and ev.details["error"] == "forbidden"
+    # The failed delivery left no webhook row behind, so a later retry with the same id is applied.
+    assert webhook(client, ORDER, wid="late-1").json()["duplicate"] is False
+    listed = client.get("/audit?action=shopify.webhook_failed", headers=org.h()).json()
+    assert listed["total"] == 1
