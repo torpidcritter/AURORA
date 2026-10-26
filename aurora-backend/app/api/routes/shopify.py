@@ -72,6 +72,23 @@ def shops(p: Principal = Depends(require(Perm.manage_integrations)), db: Session
     return {"items": shopify_service.list_shops(db, p.org_id), "configured": bool(get_settings().shopify_api_key)}
 
 
+@router.post("/shops/{shop_id}/webhooks")
+def refresh_webhooks(
+    shop_id: uuid.UUID, p: Principal = Depends(require(Perm.manage_integrations)), db: Session = Depends(get_db)
+) -> dict:
+    shop = shopify_service.refresh_webhooks(db, p.org_id, shop_id)
+    audit.record_for(
+        db,
+        p,
+        "shopify.webhooks_registered",
+        resource_type="shopify_shop",
+        resource_id=shop.id,
+        details={"shop": shop.shop_domain, "webhooks": shop.webhooks},
+    )
+    db.commit()
+    return {"id": str(shop.id), "webhooks": shop.webhooks}
+
+
 @router.delete("/shops/{shop_id}", status_code=204)
 def disconnect(
     shop_id: uuid.UUID, p: Principal = Depends(require(Perm.manage_integrations)), db: Session = Depends(get_db)

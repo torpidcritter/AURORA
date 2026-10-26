@@ -15,6 +15,9 @@ interface Shop {
   connected: boolean;
   connected_at: string;
   uninstalled_at: string | null;
+  webhooks: Record<string, string>;
+  webhooks_ok: boolean;
+  webhooks_checked_at: string | null;
 }
 
 const SHOP_RE = /^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$/;
@@ -26,6 +29,7 @@ export function ShopifyCard() {
   const [shop, setShop] = useState("");
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
   const status = params.get("shopify");
 
   const connect = async (e: FormEvent) => {
@@ -46,8 +50,21 @@ export function ShopifyCard() {
     }
   };
 
+  const refreshWebhooks = async (id: string) => {
+    setErr(null);
+    setRefreshing(id);
+    try {
+      await api(`/shopify/shops/${id}/webhooks`, { method: "POST" });
+      await shops.mutate();
+    } catch (e2) {
+      setErr(e2);
+    } finally {
+      setRefreshing(null);
+    }
+  };
+
   return (
-    <Card title="Shopify" subtitle="Orders from connected stores are added to daily sales automatically (source: shopify).">
+    <Card title="Shopify" subtitle="New, cancelled and refunded orders from connected stores update daily sales automatically (source: shopify).">
       {status === "connected" && <div className="mb-3"><Notice tone="ok">Store connected. New orders will appear in sales history.</Notice></div>}
       {status === "error" && <div className="mb-3"><Notice tone="bad">The store could not be connected. Start again from this page; links from Shopify expire after 10 minutes.</Notice></div>}
       {shops.error ? (
@@ -74,8 +91,12 @@ export function ShopifyCard() {
                   <span className="font-medium text-ink">{s.shop_domain}</span>
                   <Badge tone={s.connected ? "ok" : "warn"}>{s.connected ? "connected" : "disconnected"}</Badge>
                   <span className="text-xs text-faint">{s.connected ? `since ${fmtDateTime(s.connected_at)}` : `since ${fmtDateTime(s.uninstalled_at)}`}</span>
+                  {s.connected && <Badge tone={s.webhooks_ok ? "ok" : "warn"}>{s.webhooks_ok ? "receiving orders" : "webhooks not registered"}</Badge>}
                   {s.connected && (
-                    <span className="ml-auto">
+                    <span className="ml-auto flex gap-2">
+                      <Button className="px-2.5 py-1 text-xs" loading={refreshing === s.id} onClick={() => refreshWebhooks(s.id)}>
+                        Re-register webhooks
+                      </Button>
                       <ConfirmButton
                         title={`Disconnect ${s.shop_domain}?`}
                         body="Aurora deletes its access token and ignores further orders from this store. Sales already imported are kept. Also uninstall the app in Shopify to stop deliveries."
@@ -88,6 +109,15 @@ export function ShopifyCard() {
                         Disconnect
                       </ConfirmButton>
                     </span>
+                  )}
+                  {s.connected && !s.webhooks_ok && Object.keys(s.webhooks).length > 0 && (
+                    <ul className="w-full text-xs text-muted" aria-label={`Webhook status for ${s.shop_domain}`}>
+                      {Object.entries(s.webhooks).map(([topic, st]) => (
+                        <li key={topic}>
+                          <span className="font-mono">{topic}</span>: {st}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </li>
               ))}

@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     shopify_api_secret_previous: SecretStr | None = None
     shopify_api_version: str = "2025-07"
     shopify_redirect_url: str = "http://localhost:8100/shopify/callback"
+    # Public HTTPS base of the API that Shopify calls, e.g. https://api.example.com. Defaults to the origin of
+    # SHOPIFY_REDIRECT_URL. Shopify only accepts HTTPS webhook addresses.
+    shopify_webhook_base_url: str | None = None
     shopify_scopes: str = "read_orders,read_products"
     # OAuth callback timestamps older than this are refused (the state itself expires after 10 minutes).
     shopify_oauth_max_age_s: int = 3600

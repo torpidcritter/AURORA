@@ -28,7 +28,7 @@ import secrets
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 from sqlalchemy import func, select, update
@@ -52,6 +52,23 @@ SUPPORTED_TOPICS = {
     "customers/redact",
     "shop/redact",
 }
+# Topics Aurora subscribes to after install, with their Admin GraphQL enum names. The GDPR topics
+# (customers/data_request, customers/redact, shop/redact) are mandatory compliance webhooks that Shopify configures
+# from the app's settings, not through this API.
+WEBHOOK_TOPICS = {
+    "orders/create": "ORDERS_CREATE",
+    "orders/cancelled": "ORDERS_CANCELLED",
+    "refunds/create": "REFUNDS_CREATE",
+    "app/uninstalled": "APP_UNINSTALLED",
+}
+_SUBSCRIBE = """
+mutation Subscribe($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
+  webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
+    webhookSubscription { id }
+    userErrors { field message }
+  }
+}
+"""
 # Restock types meaning the units came back into inventory, so they are no longer demand.
 RESTOCKED = {"return", "cancel", "legacy_restock"}
 
@@ -128,6 +145,82 @@ def _exchange_code(shop: str, code: str, http: httpx.Client | None) -> dict[str,
     return data
 
 
+def webhook_base_url() -> str:
+    s = get_settings()
+    if s.shopify_webhook_base_url:
+        return s.shopify_webhook_base_url.rstrip("/")
+    u = urlparse(s.shopify_redirect_url)
+    return f"{u.scheme}://{u.netloc}"
+
+
+def register_webhooks(shop: str, access_token: str, http: httpx.Client | None = None) -> dict[str, str]:
+    """Subscribe the shop to WEBHOOK_TOPICS. Returns a status per topic: "registered", "skipped: ..." or
+    "error: ...". An existing subscription for the same address counts as registered, so this is safe to repeat."""
+    base = webhook_base_url()
+    if not base.startswith("https://"):
+        return {
+            t: "skipped: Shopify requires an HTTPS webhook address (set SHOPIFY_WEBHOOK_BASE_URL)"
+            for t in WEBHOOK_TOPICS
+        }
+    version = get_settings().shopify_api_version
+    client = http or httpx.Client(timeout=10.0)
+    out: dict[str, str] = {}
+    try:
+        for topic, enum in WEBHOOK_TOPICS.items():
+            variables = {"topic": enum, "sub": {"callbackUrl": f"{base}/shopify/webhooks/{topic}", "format": "JSON"}}
+            try:
+                r = client.post(
+                    f"https://{shop}/admin/api/{version}/graphql.json",
+                    headers={"X-Shopify-Access-Token": access_token},
+                    json={"query": _SUBSCRIBE, "variables": variables},
+                )
+            except httpx.HTTPError:
+                out[topic] = "error: Shopify unreachable"
+                continue
+            if r.status_code != 200:
+                out[topic] = f"error: HTTP {r.status_code}"
+                continue
+            try:
+                body = r.json()
+            except ValueError:
+                out[topic] = "error: invalid response"
+                continue
+            payload = (body.get("data") or {}).get("webhookSubscriptionCreate") or {}
+            errors = [str(e.get("message", ""))[:200] for e in payload.get("userErrors") or []]
+            if body.get("errors"):
+                out[topic] = "error: " + str(body["errors"][0].get("message", "GraphQL error"))[:200]
+            elif not errors:
+                out[topic] = "registered"
+            elif any("already been taken" in e for e in errors):
+                out[topic] = "registered"
+            else:
+                out[topic] = "error: " + "; ".join(errors)
+    finally:
+        if http is None:
+            client.close()
+    return out
+
+
+def refresh_webhooks(
+    db: Session, org_id: uuid.UUID, shop_id: uuid.UUID, http: httpx.Client | None = None
+) -> ShopifyShop:
+    """Re-register webhooks for a connected shop (e.g. after moving the API to a new address)."""
+    _require_config()
+    shop = db.get(ShopifyShop, shop_id)
+    if shop is None or shop.org_id != org_id:
+        raise NotFound("Shop not found")
+    if shop.uninstalled_at is not None:
+        raise Conflict("Reconnect the shop before registering webhooks")
+    try:
+        token = crypto.decrypt(shop.access_token_enc)
+    except ValueError as exc:
+        raise Conflict("The stored access token cannot be decrypted; reconnect the shop") from exc
+    shop.webhooks = register_webhooks(shop.shop_domain, token, http)
+    shop.webhooks_checked_at = datetime.now(UTC)
+    db.flush()
+    return shop
+
+
 def complete_install(db: Session, params: dict[str, str], http: httpx.Client | None = None) -> ShopifyShop:
     s = get_settings()
     _require_config()
@@ -174,6 +267,10 @@ def complete_install(db: Session, params: dict[str, str], http: httpx.Client | N
     existing.access_token_enc = crypto.encrypt(token["access_token"])
     existing.scopes = ",".join(sorted(granted))
     existing.uninstalled_at = None
+    # Without subscriptions Shopify sends nothing. A failure here does not undo the install: the status is shown in
+    # the UI and an admin can retry with POST /shopify/shops/{id}/webhooks.
+    existing.webhooks = register_webhooks(shop, token["access_token"], http)
+    existing.webhooks_checked_at = datetime.now(UTC)
     db.flush()
     return existing
 
@@ -188,6 +285,9 @@ def list_shops(db: Session, org_id: uuid.UUID) -> list[dict[str, Any]]:
             "connected": r.uninstalled_at is None,
             "connected_at": r.created_at.isoformat(),
             "uninstalled_at": r.uninstalled_at.isoformat() if r.uninstalled_at else None,
+            "webhooks": r.webhooks or {},
+            "webhooks_ok": bool(r.webhooks) and all(v == "registered" for v in r.webhooks.values()),
+            "webhooks_checked_at": r.webhooks_checked_at.isoformat() if r.webhooks_checked_at else None,
         }
         for r in rows
     ]

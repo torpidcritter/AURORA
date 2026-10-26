@@ -319,6 +319,9 @@ class ShopifyShop(TimestampMixin, Base):
     access_token_enc: Mapped[str] = mapped_column(Text, nullable=False)
     scopes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     uninstalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Outcome of the last webhook registration per topic, e.g. {"orders/create": "registered"}.
+    webhooks: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    webhooks_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ShopifyOrder(TimestampMixin, Base):

@@ -380,3 +380,68 @@ def test_cancellation_touches_only_that_orders_units(client, org, other_org, con
         ("SHOP-A", "upload"): 7.0,
     }
     assert _sales(db, other_org.org_id) == {("SHOP-A", "shopify"): 11.0}
+
+
+def _graphql_transport(seen, *, fail_topic=None, taken_topic=None):
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.scheme == "https" and request.url.path == "/admin/api/2025-07/graphql.json"
+        assert request.headers["X-Shopify-Access-Token"] == "shpat_live_token"
+        body = json.loads(request.content)
+        topic = body["variables"]["topic"]
+        seen.append((request.url.host, topic, body["variables"]["sub"]["callbackUrl"]))
+        errors = []
+        if topic == fail_topic:
+            errors = [{"field": ["callbackUrl"], "message": "Address is invalid"}]
+        if topic == taken_topic:
+            errors = [{"field": ["callbackUrl"], "message": "Address for this topic has already been taken"}]
+        return httpx.Response(
+            200, json={"data": {"webhookSubscriptionCreate": {"webhookSubscription": None, "userErrors": errors}}}
+        )
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_install_registers_webhooks_over_https(client, org, configured, db, monkeypatch):
+    monkeypatch.setattr(configured, "shopify_webhook_base_url", "https://api.example.com")
+    seen = []
+    real = shopify_service.register_webhooks
+    monkeypatch.setattr(
+        shopify_service,
+        "register_webhooks",
+        lambda shop, token, http=None: real(shop, token, _graphql_transport(seen, taken_topic="APP_UNINSTALLED")),
+    )
+    connect(client, org)
+    assert sorted(t for _, t, _ in seen) == ["APP_UNINSTALLED", "ORDERS_CANCELLED", "ORDERS_CREATE", "REFUNDS_CREATE"]
+    assert all(host == SHOP for host, _, _ in seen)
+    assert ("https://api.example.com/shopify/webhooks/orders/create") in {u for _, _, u in seen}
+    shops = client.get("/shopify/shops", headers=org.h("admin")).json()["items"]
+    # "already been taken" means the subscription exists: counted as registered.
+    assert shops[0]["webhooks_ok"] is True and set(shops[0]["webhooks"].values()) == {"registered"}
+
+
+def test_webhook_registration_errors_are_reported_and_can_be_retried(client, org, configured, db, monkeypatch):
+    connect(client, org)  # test settings use an http:// redirect URL, so registration is skipped
+    shop = client.get("/shopify/shops", headers=org.h("admin")).json()["items"][0]
+    assert shop["webhooks_ok"] is False
+    assert all(v.startswith("skipped: Shopify requires an HTTPS") for v in shop["webhooks"].values())
+
+    monkeypatch.setattr(configured, "shopify_webhook_base_url", "https://api.example.com")
+    seen = []
+    real = shopify_service.register_webhooks
+    monkeypatch.setattr(
+        shopify_service,
+        "register_webhooks",
+        lambda s, t, http=None: real(s, t, _graphql_transport(seen, fail_topic="REFUNDS_CREATE")),
+    )
+    assert client.post(f"/shopify/shops/{shop['id']}/webhooks", headers=org.h("analyst")).status_code == 403
+    r = client.post(f"/shopify/shops/{shop['id']}/webhooks", headers=org.h("admin"))
+    assert r.status_code == 200, r.text
+    assert r.json()["webhooks"]["refunds/create"] == "error: Address is invalid"
+    assert r.json()["webhooks"]["orders/create"] == "registered"
+    assert client.get("/shopify/shops", headers=org.h("admin")).json()["items"][0]["webhooks_ok"] is False
+
+
+def test_refresh_webhooks_is_tenant_scoped(client, org, other_org, configured, db):
+    connect(client, org)
+    shop_id = client.get("/shopify/shops", headers=org.h("admin")).json()["items"][0]["id"]
+    assert client.post(f"/shopify/shops/{shop_id}/webhooks", headers=other_org.h("admin")).status_code == 404
