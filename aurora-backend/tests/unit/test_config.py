@@ -55,3 +55,11 @@ def test_empty_variables_fall_back_to_defaults(monkeypatch: pytest.MonkeyPatch) 
     assert s.anthropic_api_key is None
     assert s.training_max_epochs == 30
     assert s.storage_backend == "local"
+
+
+def test_password_reset_link_lifetime_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _settings(monkeypatch).password_reset_ttl_minutes == 60
+    assert _settings(monkeypatch, PASSWORD_RESET_TTL_MINUTES="15").password_reset_ttl_minutes == 15
+    for bad in ("0", "100000"):
+        with pytest.raises(ValidationError):
+            _settings(monkeypatch, PASSWORD_RESET_TTL_MINUTES=bad)

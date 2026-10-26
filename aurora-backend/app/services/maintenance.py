@@ -5,16 +5,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import OAuthState, RefreshToken, WebhookEvent
+from app.db.models import OAuthState, PasswordResetToken, RefreshToken, WebhookEvent
 
 # Revoked or rotated refresh tokens are kept until they expire: reuse detection needs them. After expiry a reused
 # token is rejected anyway, so one extra day of grace is plenty.
 REFRESH_GRACE = timedelta(days=1)
 OAUTH_STATE_GRACE = timedelta(hours=1)
+# Spent or expired reset links are kept a day so a support question about "my link did not work" can be answered.
+RESET_LINK_GRACE = timedelta(days=1)
 
 
 def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
@@ -25,6 +27,13 @@ def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
     counts["refresh_tokens"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
     res = db.execute(delete(OAuthState).where(OAuthState.expires_at < now - OAUTH_STATE_GRACE))
     counts["oauth_states"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
+    cutoff = now - RESET_LINK_GRACE
+    res = db.execute(
+        delete(PasswordResetToken).where(
+            or_(PasswordResetToken.expires_at < cutoff, PasswordResetToken.used_at < cutoff)
+        )
+    )
+    counts["password_reset_tokens"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
     # Only finished deliveries; one still "processing" is left for investigation.
     res = db.execute(
         delete(WebhookEvent).where(

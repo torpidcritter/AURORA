@@ -69,3 +69,13 @@ class PasswordChange(BaseModel):
 
 class PasswordReset(BaseModel):
     new_password: str = Field(min_length=10, max_length=256)
+
+
+class ResetLinkOut(BaseModel):
+    reset_url: str
+    expires_at: datetime
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    new_password: str = Field(min_length=10, max_length=256)

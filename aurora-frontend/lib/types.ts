@@ -34,6 +34,12 @@ export interface User {
   created_at: string;
 }
 
+/** A one-time password reset link. Shown to the administrator once; only its hash is stored. */
+export interface ResetLink {
+  reset_url: string;
+  expires_at: string;
+}
+
 export interface QualityReport {
   total_rows?: number;
   accepted_rows?: number;

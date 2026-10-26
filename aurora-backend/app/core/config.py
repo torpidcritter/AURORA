@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
     bcrypt_rounds: int = 12
+    # Admin-issued one-time password reset links (Aurora sends no e-mail). They point at FRONTEND_URL.
+    password_reset_ttl_minutes: int = Field(default=60, ge=5, le=7 * 24 * 60)
     # Bootstrap admin, created only by the `seed` CLI, never implicitly at runtime.
     bootstrap_admin_email: str = "admin@example.com"
     bootstrap_admin_password: SecretStr | None = None

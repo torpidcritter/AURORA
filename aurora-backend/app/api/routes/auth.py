@@ -16,8 +16,10 @@ from app.schemas.auth import (
     MeOut,
     PasswordChange,
     PasswordReset,
+    PasswordResetConfirm,
     RefreshRequest,
     RegisterRequest,
+    ResetLinkOut,
     TokenPair,
     UserOut,
     UserUpdate,
@@ -95,6 +97,31 @@ def change_password(body: PasswordChange, p: Principal = Depends(get_principal),
     db.commit()
 
 
+@router.post("/users/{user_id}/reset-link", response_model=ResetLinkOut, status_code=201)
+def create_reset_link(
+    user_id: uuid.UUID, p: Principal = Depends(require(Perm.manage_users)), db: Session = Depends(get_db)
+) -> ResetLinkOut:
+    """Issue a one-time password reset link for a user of your organisation. Aurora sends no e-mail: show the link to
+    the administrator once and let them pass it on over a trusted channel."""
+    user, link = auth_service.create_reset_link(db, org_id=p.org_id, user_id=user_id, created_by=p.user_id)
+    audit.record_for(
+        db,
+        p,
+        "auth.reset_link_created",
+        resource_type="user",
+        resource_id=user.id,
+        details={"email": user.email, "expires_at": link.expires_at.isoformat()},
+    )
+    db.commit()
+    return ResetLinkOut(reset_url=link.reset_url, expires_at=link.expires_at)
+
+
+@router.post("/password-reset", status_code=204)
+def password_reset(body: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)) -> None:
+    """Public: set a new password with a one-time link. Every session of the user ends."""
+    auth_service.reset_password_with_token(db, body.token, body.new_password, client_ip(request))
+
+
 @users_router.get("", response_model=Page[UserOut])
 def list_users(
     limit: int = Query(50, ge=1, le=200),
@@ -122,6 +149,8 @@ def update_user(
     if "role" in changes and changes["role"] != user.role or changes.get("is_active") is False:
         user.token_version += 1
         auth_service.revoke_all_for_user(db, user.id, "role_or_status_change")
+    if changes.get("is_active") is False:
+        auth_service.invalidate_reset_links(db, user.id)
     for k, v in changes.items():
         setattr(user, k, v)
     audit.record_for(db, p, "user.update", resource_type="user", resource_id=user.id, details=changes)
