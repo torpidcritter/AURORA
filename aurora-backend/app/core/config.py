@@ -103,7 +103,13 @@ class Settings(BaseSettings):
     shopify_api_version: str = "2025-07"
     shopify_redirect_url: str = "http://localhost:8100/shopify/callback"
     shopify_scopes: str = "read_orders,read_products"
-    shopify_webhook_tolerance_s: int = 3600
+    # OAuth callback timestamps older than this are refused (the state itself expires after 10 minutes).
+    shopify_oauth_max_age_s: int = 3600
+    # Shopify retries a failed delivery for about 4 hours with the original trigger time, so the window must be wider
+    # than that or retries after an outage are lost. Replays inside the window are stopped by the webhook-id dedupe.
+    shopify_webhook_tolerance_s: int = 43200
+    # Processed webhook ids are kept this long for dedupe; must stay well above shopify_webhook_tolerance_s.
+    webhook_event_retention_days: int = 30
     alert_webhook_url: str | None = None
     frontend_url: str = "http://localhost:3100"
     # Fernet key(s), comma-separated, newest first, used to encrypt third-party access tokens at rest.

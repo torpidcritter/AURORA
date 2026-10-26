@@ -321,6 +321,25 @@ class ShopifyShop(TimestampMixin, Base):
     uninstalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ShopifyOrder(TimestampMixin, Base):
+    """Ledger of what each Shopify order added to daily sales, so cancellations and refunds can be reversed exactly
+    once and never remove more than the order added."""
+
+    __tablename__ = "shopify_orders"
+    __table_args__ = (UniqueConstraint("shop_domain", "order_id", name="uq_shopify_orders_shop_order"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    shop_domain: Mapped[str] = mapped_column(String(255), nullable=False)
+    order_id: Mapped[str] = mapped_column(String(40), nullable=False)
+    order_date: Mapped[date] = mapped_column(Date, nullable=False)
+    lines: Mapped[dict] = mapped_column(JSONB, nullable=False)  # {sku: quantity added}
+    removed: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    refund_ids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class OAuthState(TimestampMixin, Base):
     __tablename__ = "oauth_states"
     state: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -362,6 +381,7 @@ __all__ = [
     "AlertDelivery",
     "AuditEvent",
     "ExternalSignal",
+    "ShopifyOrder",
     "ShopifyShop",
     "OAuthState",
     "WebhookEvent",

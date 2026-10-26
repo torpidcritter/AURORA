@@ -45,4 +45,7 @@ def decrypt(token: str) -> str:
 
 def rotate(token: str) -> str:
     """Re-encrypt with the newest key."""
-    return _fernet().rotate(token.encode()).decode()
+    try:
+        return _fernet().rotate(token.encode()).decode()
+    except InvalidToken as exc:
+        raise ValueError("Stored credential cannot be decrypted with the configured keys") from exc

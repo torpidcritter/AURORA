@@ -174,7 +174,9 @@ def test_webhook_signature_and_freshness(client, org, configured, db):
     bad = _webhook_count("bad_signature")
     assert webhook(client, ORDER, secret="wrong").status_code == 401
     assert _webhook_count("bad_signature") - bad == 1
-    assert webhook(client, ORDER, wid="old", triggered=datetime.now(UTC) - timedelta(hours=3)).status_code == 403
+    # A retry within Shopify's ~4 hour retry schedule still carries the original trigger time and is accepted.
+    assert webhook(client, ORDER, wid="retry", triggered=datetime.now(UTC) - timedelta(hours=4)).status_code == 200
+    assert webhook(client, ORDER, wid="old", triggered=datetime.now(UTC) - timedelta(hours=13)).status_code == 403
     # Tampering with the body after signing fails verification.
     body = json.dumps(ORDER).encode()
     sig = base64.b64encode(hmac.new(SECRET.encode(), body, hashlib.sha256).digest()).decode()
@@ -201,6 +203,7 @@ def test_failed_processing_rolls_back_so_retry_applies(client, org, configured, 
         webhook(client, ORDER, wid="retry-me")
     monkeypatch.setattr(shopify_service, "_ingest_order", real)
     r = webhook(client, ORDER, wid="retry-me")
+    # The ledger row was rolled back with everything else, so the retry is applied in full.
     assert r.json()["duplicate"] is False and r.json()["lines"] == 2
 
 
@@ -260,3 +263,120 @@ def test_token_key_rotation(monkeypatch):
     assert crypto.decrypt(rotated) == "secret-token"
     with pytest.raises(ValueError):
         crypto.decrypt(enc)
+
+
+def test_reencrypt_tokens_moves_every_shop_to_the_newest_key(org, db, monkeypatch):
+    s = get_settings()
+    k_old, k_new = Fernet.generate_key().decode(), Fernet.generate_key().decode()
+    monkeypatch.setattr(s, "token_encryption_keys", SecretStr(k_old))
+    db.add_all(
+        [
+            ShopifyShop(org_id=org.org_id, shop_domain="one.myshopify.com", access_token_enc=crypto.encrypt("tok-1")),
+            ShopifyShop(org_id=org.org_id, shop_domain="two.myshopify.com", access_token_enc=crypto.encrypt("tok-2")),
+            ShopifyShop(org_id=org.org_id, shop_domain="lost.myshopify.com", access_token_enc="not-a-fernet-token"),
+        ]
+    )
+    db.commit()
+    monkeypatch.setattr(s, "token_encryption_keys", SecretStr(f"{k_new},{k_old}"))
+
+    assert shopify_service.reencrypt_tokens(db) == {"rotated": 2, "failed": ["lost.myshopify.com"]}
+
+    # With the old key removed, the rotated tokens still decrypt.
+    monkeypatch.setattr(s, "token_encryption_keys", SecretStr(k_new))
+    db.expire_all()
+    tokens = {sh.shop_domain: sh.access_token_enc for sh in db.scalars(select(ShopifyShop))}
+    assert crypto.decrypt(tokens["one.myshopify.com"]) == "tok-1"
+    assert crypto.decrypt(tokens["two.myshopify.com"]) == "tok-2"
+    assert tokens["lost.myshopify.com"] == "not-a-fernet-token"
+
+
+def _sales(db, org_id) -> dict[tuple[str, str], float]:
+    db.expire_all()
+    rows = db.execute(
+        select(Product.sku, SalesRecord.source, SalesRecord.quantity)
+        .join(Product, Product.id == SalesRecord.product_id)
+        .where(SalesRecord.org_id == org_id)
+    ).all()
+    return {(sku, src): q for sku, src, q in rows}
+
+
+def _refund(rid, *lines):
+    return {
+        "id": rid,
+        "order_id": 1,
+        "refund_line_items": [{"quantity": q, "restock_type": rt, "line_item": {"sku": sku}} for sku, q, rt in lines],
+    }
+
+
+def test_same_order_under_a_new_webhook_id_is_applied_once(client, org, configured, db):
+    connect(client, org)
+    webhook(client, ORDER, wid="a")
+    assert webhook(client, ORDER, wid="b").json() == {"ok": True, "duplicate": False, "duplicate_order": True}
+    assert _sales(db, org.org_id) == {("SHOP-A", "shopify"): 3.0, ("SHOP-B", "shopify"): 4.0}
+
+
+def test_refunds_remove_only_restocked_units_and_cancellation_removes_the_rest(client, org, configured, db):
+    connect(client, org)
+    webhook(client, ORDER, wid="create")
+    r = webhook(
+        client,
+        _refund(10, ("SHOP-A", 1, "return"), ("SHOP-B", 2, "no_restock")),
+        topic="refunds/create",
+        wid="refund-10",
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["units_removed"] == 1 and r.json()["units_kept_as_sales"] == 2
+    assert _sales(db, org.org_id) == {("SHOP-A", "shopify"): 2.0, ("SHOP-B", "shopify"): 4.0}
+    # The same refund delivered again under another webhook id changes nothing.
+    again = webhook(client, _refund(10, ("SHOP-A", 1, "return")), topic="refunds/create", wid="refund-10-again")
+    assert again.json()["ignored"] == "refund already applied"
+
+    r = webhook(client, {**ORDER, "cancelled_at": "2026-10-21T09:00:00Z"}, topic="orders/cancelled", wid="cancel")
+    assert r.json()["cancelled"] is True and r.json()["units_removed"] == 6
+    assert _sales(db, org.org_id) == {("SHOP-A", "shopify"): 0.0, ("SHOP-B", "shopify"): 0.0}
+    # Shopify also sends a refund with restock_type "cancel" for a cancelled order: nothing is left to remove.
+    r = webhook(client, _refund(11, ("SHOP-B", 4, "cancel")), topic="refunds/create", wid="refund-11")
+    assert r.json()["units_removed"] == 0
+    assert webhook(client, ORDER, topic="orders/cancelled", wid="cancel-2").json()["ignored"] == "already cancelled"
+    assert _sales(db, org.org_id) == {("SHOP-A", "shopify"): 0.0, ("SHOP-B", "shopify"): 0.0}
+
+
+def test_refund_after_cancellation_and_unknown_orders(client, org, configured, db):
+    connect(client, org)
+    webhook(client, ORDER, wid="create")
+    webhook(client, ORDER, topic="orders/cancelled", wid="cancel")
+    r = webhook(client, _refund(12, ("SHOP-A", 3, "cancel")), topic="refunds/create", wid="refund-12")
+    assert r.json()["units_removed"] == 0
+    unknown = {**_refund(13, ("SHOP-A", 1, "return")), "order_id": 999}
+    assert webhook(client, unknown, topic="refunds/create", wid="r13").json()["ignored"] == "order not recorded"
+    assert webhook(client, {**ORDER, "id": 998}, topic="orders/cancelled", wid="c2").json()["ignored"] == (
+        "order not recorded"
+    )
+
+
+def test_cancellation_touches_only_that_orders_units(client, org, other_org, configured, db):
+    connect(client, org)
+    webhook(client, ORDER, wid="o1")
+    webhook(client, {**ORDER, "id": 2, "line_items": [{"sku": "SHOP-A", "quantity": 5}]}, wid="o2")
+    day = datetime(2026, 10, 20).date()
+    pid = db.scalar(select(Product.id).where(Product.org_id == org.org_id, Product.sku == "SHOP-A"))
+    # Uploaded sales for the same product and day, and another tenant's product with the same SKU.
+    other = Product(org_id=other_org.org_id, sku="SHOP-A", name="Other A")
+    db.add(other)
+    db.flush()
+    db.add_all(
+        [
+            SalesRecord(org_id=org.org_id, product_id=pid, sale_date=day, quantity=7, source="upload"),
+            SalesRecord(org_id=other_org.org_id, product_id=other.id, sale_date=day, quantity=11, source="shopify"),
+        ]
+    )
+    db.commit()
+
+    webhook(client, ORDER, topic="orders/cancelled", wid="cancel-o1")
+
+    assert _sales(db, org.org_id) == {
+        ("SHOP-A", "shopify"): 5.0,
+        ("SHOP-B", "shopify"): 0.0,
+        ("SHOP-A", "upload"): 7.0,
+    }
+    assert _sales(db, other_org.org_id) == {("SHOP-A", "shopify"): 11.0}

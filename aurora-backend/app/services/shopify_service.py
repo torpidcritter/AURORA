@@ -8,8 +8,14 @@ Flow
    deliveries, and record the webhook id in `webhook_events` in the same transaction as the sales update, so a
    redelivery is acknowledged without being applied twice.
 
-Order line items with a SKU become daily `sales_records` rows with `source="shopify"`. Orders are added on
-`orders/create`; edits, cancellations and refunds are not reconciled (documented limitation).
+Order line items with a SKU become daily `sales_records` rows with `source="shopify"`, dated by the order's local
+calendar day. A ledger (`shopify_orders`) records what each order added, so that:
+- `orders/create` delivered twice under different webhook ids is still applied once;
+- `orders/cancelled` removes whatever the order still contributes;
+- `refunds/create` removes only units that went back into stock (restock type return, cancel or legacy_restock);
+  a refund without a return keeps the sale, because the units did leave inventory;
+- removals never exceed what the order added, whatever order the webhooks arrive in.
+Order edits (`orders/updated`) are not reconciled (documented limitation).
 """
 
 from __future__ import annotations
@@ -25,19 +31,29 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core import crypto
 from app.core.config import get_settings
 from app.core.errors import Conflict, Forbidden, NotFound, Unavailable, ValidationFailed
-from app.db.models import OAuthState, Product, SalesRecord, ShopifyShop, WebhookEvent
+from app.db.models import OAuthState, Product, SalesRecord, ShopifyOrder, ShopifyShop, WebhookEvent
 
 SHOP_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$")
 STATE_TTL = timedelta(minutes=10)
 SOURCE = "shopify"
-SUPPORTED_TOPICS = {"orders/create", "app/uninstalled", "customers/data_request", "customers/redact", "shop/redact"}
+SUPPORTED_TOPICS = {
+    "orders/create",
+    "orders/cancelled",
+    "refunds/create",
+    "app/uninstalled",
+    "customers/data_request",
+    "customers/redact",
+    "shop/redact",
+}
+# Restock types meaning the units came back into inventory, so they are no longer demand.
+RESTOCKED = {"return", "cancel", "legacy_restock"}
 
 
 def _require_config() -> tuple[str, str]:
@@ -121,7 +137,7 @@ def complete_install(db: Session, params: dict[str, str], http: httpx.Client | N
         ts = int(params.get("timestamp", "0"))
     except ValueError as exc:
         raise Forbidden("Invalid timestamp") from exc
-    if abs(datetime.now(UTC).timestamp() - ts) > s.shopify_webhook_tolerance_s:
+    if abs(datetime.now(UTC).timestamp() - ts) > s.shopify_oauth_max_age_s:
         raise Forbidden("Shopify redirect is too old")
     shop = normalise_shop(params.get("shop", ""))
     code = params.get("code") or ""
@@ -210,7 +226,11 @@ def _order_date(order: dict[str, Any]) -> date:
     return datetime.fromisoformat(raw.replace("Z", "+00:00")).date()
 
 
-def _ingest_order(db: Session, org_id: uuid.UUID, order: dict[str, Any]) -> dict[str, Any]:
+def _sku(li: dict[str, Any]) -> str:
+    return str(li.get("sku") or "").strip()[:120]
+
+
+def _ingest_order(db: Session, org_id: uuid.UUID, shop_domain: str, order: dict[str, Any]) -> dict[str, Any]:
     if order.get("test") is True:
         return {"skipped": "test order"}
     day = _order_date(order)
@@ -218,15 +238,25 @@ def _ingest_order(db: Session, org_id: uuid.UUID, order: dict[str, Any]) -> dict
     names: dict[str, str] = {}
     skipped = 0
     for li in order.get("line_items") or []:
-        sku = str(li.get("sku") or "").strip()[:120]
+        sku = _sku(li)
         q = li.get("quantity")
-        if not sku or not isinstance(q, int | float) or q <= 0:
+        if not sku or not isinstance(q, int | float) or isinstance(q, bool) or q <= 0:
             skipped += 1
             continue
         qty_by_sku[sku] = qty_by_sku.get(sku, 0.0) + float(q)
         names.setdefault(sku, str(li.get("title") or sku)[:255])
     if not qty_by_sku:
         return {"lines": 0, "skipped_lines": skipped}
+    order_id = str(order.get("id") or "").strip()[:40]
+    if order_id:
+        recorded = db.execute(
+            insert(ShopifyOrder)
+            .values(org_id=org_id, shop_domain=shop_domain, order_id=order_id, order_date=day, lines=qty_by_sku)
+            .on_conflict_do_nothing(constraint="uq_shopify_orders_shop_order")
+            .returning(ShopifyOrder.id)
+        ).scalar()
+        if recorded is None:
+            return {"duplicate_order": True}
     # New SKUs are created with unknown stock, so they never get a recommendation until someone counts them.
     stmt = insert(Product).values(
         [
@@ -252,6 +282,78 @@ def _ingest_order(db: Session, org_id: uuid.UUID, order: dict[str, Any]) -> dict
         )
     )
     return {"lines": len(rows), "skipped_lines": skipped, "date": day.isoformat()}
+
+
+def _ledger(db: Session, shop_domain: str, order_id: Any) -> ShopifyOrder | None:
+    oid = str(order_id or "").strip()[:40]
+    if not oid:
+        return None
+    return db.scalar(
+        select(ShopifyOrder)
+        .where(ShopifyOrder.shop_domain == shop_domain, ShopifyOrder.order_id == oid)
+        .with_for_update()
+    )
+
+
+def _remove(db: Session, entry: ShopifyOrder, wanted: dict[str, float]) -> dict[str, float]:
+    """Subtract up to `wanted` units per SKU from the order's sales day, capped at what the order still contributes.
+    Returns what was actually removed."""
+    removed = dict(entry.removed or {})
+    applied: dict[str, float] = {}
+    for sku, q in wanted.items():
+        remaining = float(entry.lines.get(sku, 0.0)) - float(removed.get(sku, 0.0))
+        take = min(float(q), remaining)
+        if take <= 0:
+            continue
+        product_id = select(Product.id).where(Product.org_id == entry.org_id, Product.sku == sku).scalar_subquery()
+        db.execute(
+            update(SalesRecord)
+            .where(
+                SalesRecord.product_id == product_id,
+                SalesRecord.sale_date == entry.order_date,
+                SalesRecord.source == SOURCE,
+            )
+            .values(quantity=func.greatest(SalesRecord.quantity - take, 0.0))
+        )
+        removed[sku] = float(removed.get(sku, 0.0)) + take
+        applied[sku] = take
+    entry.removed = removed
+    return applied
+
+
+def _cancel_order(db: Session, shop_domain: str, order: dict[str, Any]) -> dict[str, Any]:
+    entry = _ledger(db, shop_domain, order.get("id"))
+    if entry is None:
+        return {"ignored": "order not recorded"}
+    if entry.cancelled_at is not None:
+        return {"ignored": "already cancelled"}
+    applied = _remove(db, entry, {sku: float(q) for sku, q in entry.lines.items()})
+    entry.cancelled_at = datetime.now(UTC)
+    return {"cancelled": True, "units_removed": sum(applied.values())}
+
+
+def _ingest_refund(db: Session, shop_domain: str, refund: dict[str, Any]) -> dict[str, Any]:
+    entry = _ledger(db, shop_domain, refund.get("order_id"))
+    if entry is None:
+        return {"ignored": "order not recorded"}
+    refund_id = str(refund.get("id") or "").strip()[:40]
+    if refund_id and refund_id in (entry.refund_ids or []):
+        return {"ignored": "refund already applied"}
+    wanted: dict[str, float] = {}
+    kept = 0.0
+    for rli in refund.get("refund_line_items") or []:
+        q = rli.get("quantity")
+        sku = _sku(rli.get("line_item") or {})
+        if not sku or not isinstance(q, int | float) or isinstance(q, bool) or q <= 0:
+            continue
+        if rli.get("restock_type") in RESTOCKED:
+            wanted[sku] = wanted.get(sku, 0.0) + float(q)
+        else:
+            kept += float(q)
+    applied = _remove(db, entry, wanted)
+    if refund_id:
+        entry.refund_ids = [*(entry.refund_ids or []), refund_id]
+    return {"units_removed": sum(applied.values()), "units_kept_as_sales": kept}
 
 
 def handle_webhook(
@@ -306,8 +408,29 @@ def handle_webhook(
             raise ValidationFailed("Webhook body is not JSON") from exc
         if not isinstance(order, dict):
             raise ValidationFailed("Webhook body must be an object")
-        details = _ingest_order(db, shop.org_id, order)
+        if topic == "orders/cancelled":
+            details = _cancel_order(db, shop.shop_domain, order)
+        elif topic == "refunds/create":
+            details = _ingest_refund(db, shop.shop_domain, order)
+        else:
+            details = _ingest_order(db, shop.org_id, shop.shop_domain, order)
     event.status = "processed"
     event.details = details
     event.processed_at = datetime.now(UTC)
     return {"duplicate": False, **details}
+
+
+def reencrypt_tokens(db: Session) -> dict[str, Any]:
+    """Re-encrypt every stored access token with the newest TOKEN_ENCRYPTION_KEYS key, so older keys can be removed.
+    A token no configured key can decrypt is reported, not changed; that shop must be reconnected."""
+    rotated, failed = 0, []
+    for shop in db.scalars(select(ShopifyShop).order_by(ShopifyShop.shop_domain)).all():
+        if not shop.access_token_enc:
+            continue
+        try:
+            shop.access_token_enc = crypto.rotate(shop.access_token_enc)
+            rotated += 1
+        except ValueError:
+            failed.append(shop.shop_domain)
+    db.commit()
+    return {"rotated": rotated, "failed": failed}

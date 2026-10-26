@@ -3,6 +3,8 @@
 python -m app.cli bootstrap            # create the first organisation + admin (idempotent)
 python -m app.cli seed-demo            # DEMO ONLY: load synthetic sales + inventory into the admin's org
 python -m app.cli create-user EMAIL ROLE
+python -m app.cli purge-expired          # delete expired refresh tokens, OAuth states, old webhook ids
+python -m app.cli reencrypt-tokens       # re-encrypt Shopify tokens with the newest TOKEN_ENCRYPTION_KEYS key
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.models import Organization, Product, User
 from app.db.session import session_scope
-from app.services import auth_service, dataset_service
+from app.services import auth_service, dataset_service, maintenance, shopify_service
 
 
 def bootstrap() -> None:
@@ -89,11 +91,23 @@ def main() -> None:
     u = sub.add_parser("create-user")
     u.add_argument("email")
     u.add_argument("role", choices=["viewer", "operator", "analyst", "admin"])
+    sub.add_parser("purge-expired")
+    sub.add_parser("reencrypt-tokens")
     a = ap.parse_args()
     if a.cmd == "bootstrap":
         bootstrap()
     elif a.cmd == "seed-demo":
         seed_demo(a.products, a.days)
+    elif a.cmd == "purge-expired":
+        with session_scope() as db:
+            print(maintenance.purge_expired(db))
+    elif a.cmd == "reencrypt-tokens":
+        with session_scope() as db:
+            res = shopify_service.reencrypt_tokens(db)
+        print(f"Re-encrypted {res['rotated']} token(s).")
+        if res["failed"]:
+            print("Could not decrypt (reconnect these shops): " + ", ".join(res["failed"]), file=sys.stderr)
+            sys.exit(1)
     else:
         create_user(a.email, a.role)
 

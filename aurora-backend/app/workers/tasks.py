@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.core.metrics import TRAINING_SECONDS
 from app.db.models import AuditEvent, Organization, Product
 from app.db.session import get_sessionmaker
-from app.services import alert_service, job_service, model_registry, monitoring_service, series
+from app.services import alert_service, job_service, maintenance, model_registry, monitoring_service, series
 from app.services.forecast_service import ForecastRequest, generate
 from app.workers.celery_app import celery_app
 
@@ -223,6 +223,17 @@ def cleanup_audit_logs() -> int:
         res = db.execute(delete(AuditEvent).where(AuditEvent.created_at < datetime.now(UTC) - timedelta(days=days)))
         db.commit()
         return int(res.rowcount or 0)  # type: ignore[attr-defined]
+    finally:
+        db.close()
+
+
+@celery_app.task(name="aurora.purge_expired")
+def purge_expired() -> dict:
+    db = get_sessionmaker()()
+    try:
+        counts = maintenance.purge_expired(db)
+        logger.info("purged expired rows", extra={"counts": counts})
+        return counts
     finally:
         db.close()
 
