@@ -5,7 +5,6 @@
 .mypy_cache
 artifacts
 tests
-loadtest
 .env
 .env.*
 !.env.example

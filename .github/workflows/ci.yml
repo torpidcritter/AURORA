@@ -17,6 +17,18 @@ env:
   TORCH_INDEX: https://download.pytorch.org/whl/cpu
 
 jobs:
+  secret-scan:
+    name: Secret scan (tracked files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Scan for committed credentials
+        run: python scripts/secret_scan.py
+
   backend:
     name: Backend (lint, tests, audit)
     runs-on: ubuntu-latest
@@ -249,6 +261,19 @@ jobs:
           SMOKE_EMAIL: admin@example.com
           SMOKE_TRAIN: "1"
         run: scripts/smoke-test.sh
+      - name: Load smoke (Locust, 5 users for 30 s, default thresholds)
+        working-directory: aurora-backend
+        env:
+          LOAD_EMAIL: admin@example.com
+          # A functional check on a shared runner with cold caches, so the latency gates are loose here.
+          # Capacity is measured on staging hardware (tests/load/README.md).
+          LOAD_MAX_P95_MS: "15000"
+          LOAD_P95_MS: "GET /products=3000,GET /alerts=3000,POST /forecast=30000,POST /risk/stockout/batch=30000"
+        run: |
+          python3 -m venv /tmp/load-venv
+          /tmp/load-venv/bin/pip install -q -r requirements-load.txt
+          LOAD_PASSWORD="$SMOKE_PASSWORD" /tmp/load-venv/bin/locust -f tests/load/locustfile.py \
+            --host http://127.0.0.1:8100 --headless -u 5 -r 5 -t 30s --only-summary
       - name: Dataset and model files were written to MinIO
         run: |
           docker compose exec -T api python - <<'PY'
