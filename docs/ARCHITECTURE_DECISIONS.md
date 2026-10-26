@@ -101,6 +101,10 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
 - Delivery claims a unique `(alert_id, channel)` row before sending, so retries never double-deliver. The webhook sends the
   alert id as `Idempotency-Key`. After 5 failed attempts the delivery is marked `dead`.
 - Monitoring *recommends* retraining (alerts for drift, staleness and accuracy). It never auto-promotes a model.
+- Routing: open alerts at or above a minimum severity are sent to the channels (log, and the webhook when configured).
+  The minimum is `ALERT_MIN_SEVERITY` (default `high`, the original high/critical rule), overridable per organisation
+  (ADR-030). The rule is evaluated inside the dispatch query, so one organisation's low alerts never fill the batch
+  ahead of another's deliverable ones. Every alert stays visible in the app whatever its severity.
 
 ## ADR-011 External signals are explicit, not silently applied
 - Signals (magnitude −1…+1) are stored and shown alongside forecasts. They change numbers only in a scenario where the user picks
@@ -264,3 +268,31 @@ The spec names files that do not exist here; the responsibilities live in these 
   up to the product's last uploaded sale. The spec's trigger is MAPE above 25%; because MAPE skips zero-demand days and
   swings on low-volume products, the metric (MAPE or WAPE) and threshold are configurable. An alert recommends review and
   retraining; it never retrains or promotes on its own (ADR-010).
+
+## ADR-029 Password reset: admin-issued one-time links, no e-mail
+- Aurora has no e-mail service, so a self-service "forgot password" flow would have no safe channel. Instead an admin
+  issues a one-time link for a user of their own organisation (`POST /auth/users/{id}/reset-link`) and passes it on
+  over a channel they trust. The link is shown once.
+- The token is 256 bits from `secrets`; only its SHA-256 is stored. It travels in the URL fragment
+  (`/reset-password#token=…`), which browsers never send to a server or put in a `Referer` header.
+- A link expires after `PASSWORD_RESET_TTL_MINUTES` (default 60) and is single use (a conditional `UPDATE` claims it).
+  Issuing a new link, changing the password or deactivating the user expires the others. A successful reset ends
+  every session of the user and clears any lockout.
+- An admin cannot issue a link for their own account (a stolen admin session must not bypass the current password).
+- Failures return one generic message and are audited with the real reason. The public endpoint is rate limited per
+  client IP and fails closed if Redis is down.
+- Revisit when an e-mail provider is configured: a self-service request flow can reuse the same token table.
+
+## ADR-030 Per-organisation settings
+- Inventory defaults (lead time, coverage, service level), monitoring thresholds (drift KS and mean change, model age,
+  live accuracy metric and threshold) and the alert minimum severity can be overridden per organisation. Overrides are
+  stored in `Organization.settings` (JSONB); a missing key means the global default from the environment applies.
+- `GET /settings/org` (any role) returns each setting's effective value, the global default and whether it is
+  overridden, with labels and bounds from the schema so the UI does not duplicate them. `PATCH /settings/org` needs the
+  admin-only `manage_settings` permission; `null` clears an override. Unknown keys and loosely typed values are
+  rejected. Updates lock the organisation row and are audited with before/after values.
+- A stored value that no longer validates (for example after a bound is tightened) is ignored on read and dropped on
+  the next write, rather than breaking monitoring for that organisation.
+- Kept global on purpose: the validation WAPE gate for promotion (model quality is a platform rule) and the live
+  accuracy window.
+

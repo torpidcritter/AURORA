@@ -189,6 +189,9 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | Jobs stuck in `running` | Worker logs, *System & integrations* | Restart `worker`. Every 10 minutes Beat marks jobs with no recent heartbeat as failed; start them again |
 | Slow first forecast for a product | Expected: it backtests baselines once per data fingerprint | Run *Batch forecast* after uploads to warm the cache |
 | Shopify webhooks rejected (401) | `aurora_webhooks_total{outcome="bad_signature"}` rising; API log "invalid signature" | Check `SHOPIFY_API_SECRET`; during rotation set `SHOPIFY_API_SECRET_PREVIOUS` |
+| A user is locked out or forgot their password | *Users* page, audit log `auth.login` failures | An admin opens *Users*, chooses *Reset link* and passes the link on over a trusted channel (it is shown once, works once and expires after `PASSWORD_RESET_TTL_MINUTES`, default 60). Admins cannot issue one for themselves, so keep at least two admin accounts: there is no command-line recovery for a sole admin who forgot their password yet |
+| "This reset link is invalid" | Audit log `auth.password_reset` failures show the real reason (expired, used, superseded, inactive user) | Issue a new link; issuing one cancels older ones |
+| Alerts appear in the app but not in the webhook | *Settings* minimum severity, `ALERT_MIN_SEVERITY` | Only alerts at or above the organisation's minimum (default `high`) are sent to channels; lower ones stay in the app |
 | Assistant says it is in fallback mode | Key missing, refused, or API error | Check `ANTHROPIC_API_KEY` and API logs. The fallback answers are deterministic and use the same authorised data |
 
 ## 10. Housekeeping
@@ -197,7 +200,7 @@ Beat runs these daily; each can also be run by hand:
 
 | Task | Schedule | Manual command |
 |---|---|---|
-| Delete refresh tokens expired over a day ago, OAuth states expired over an hour ago, processed webhook ids older than `WEBHOOK_EVENT_RETENTION_DAYS` (30) | 03:30 UTC | `docker compose run --rm api python -m app.cli purge-expired` |
+| Delete refresh tokens expired over a day ago, OAuth states expired over an hour ago, spent or expired password reset links over a day old, processed webhook ids older than `WEBHOOK_EVENT_RETENTION_DAYS` (30) | 03:30 UTC | `docker compose run --rm api python -m app.cli purge-expired` |
 | Delete audit events older than `AUDIT_RETENTION_DAYS` (365) | 03:15 UTC | none (task `aurora.cleanup_audit_logs`) |
 | Mark jobs without a recent heartbeat as failed | every 10 minutes | none |
 

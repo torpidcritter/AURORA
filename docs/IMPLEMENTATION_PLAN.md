@@ -16,7 +16,10 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Tenant (organisation) isolation on every object; cross-tenant tests
 - [x] User admin (create, role change, deactivate, password reset) with session invalidation
 - [x] Audit log with redaction; audit query API
-- [ ] Self-service password-reset email flow (needs an email provider; admin reset exists)
+- [x] Admin-issued one-time password reset links (ADR-029)
+- [ ] Self-service "forgot password" by e-mail (needs an e-mail provider)
+- [x] Per-organisation settings: inventory defaults, monitoring thresholds, alert routing (ADR-030)
+- [x] Restricted runtime database role; migrations run as the schema owner (ADR-019)
 
 ## P2 Data
 - [x] CSV/XLSX/JSON upload, content-type sniffing, size/row limits, zip-bomb guard
@@ -49,23 +52,30 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 ## P6 Frontend
 - [x] Next.js 16 app shell, BFF auth (httpOnly cookies, CSRF), typed API client (ADR-014)
 - [x] Pages: login, dashboard, upload wizard, products, product detail, forecasts, inventory, risk matrix, scenarios,
-      signals, alerts, models/drift, assistant, users, audit, system & integrations
+      signals, alerts, models/drift with live accuracy, assistant (page and floating panel), users with reset links,
+      organisation settings, password reset, audit, system & integrations
 - [x] Unit tests (Vitest + Testing Library) and Playwright E2E against the real backend and worker
 
 ## P7 Integrations
 - [~] Claude assistant with authorised, validated tools + deterministic fallback (tested with a fake client; no real API key used)
 - [~] Shopify OAuth and signed, idempotent webhooks; order → sales mapping (tested with signed fixtures; no real store used)
-- [ ] Shopify refund/cancellation reconciliation
+- [x] Shopify cancellation and refund reconciliation, GDPR redaction, token re-encryption command
+- [ ] Shopify order edits (`orders/updated`)
 
 ## P8 Release
-- [~] Dockerfiles + docker-compose (written; not built here, no Docker daemon)
-- [x] CI workflow: lint, type-check, migrations check, tests, build, pip-audit / npm audit, Playwright E2E
-- [x] Load test (Locust) with a bounded run; single-flight evaluation cache from its findings (ADR-017)
-- [x] Backup/restore drill (pg_dump/pg_restore + artifact checksums); deployment, upgrade and rollback runbook
+- [x] Dockerfiles + docker-compose, built and run in CI with a smoke test and a training job (MinIO optional)
+- [~] Railway + Vercel deployment config with a predeploy migration hook (written, not deployed)
+- [x] CI workflow: lint, type-check, migrations check, tests, build, pip-audit / npm audit, Playwright E2E, secret scan
+- [x] Load test (Locust, `tests/load`) paced under rate limits with pass/fail gates; CI smoke run; single-flight evaluation cache (ADR-017)
+- [x] Full platform flow test (`tests/e2e/test_full_platform_flow.py`)
+- [x] Backup script (`scripts/backup.sh`) with restore drill; deployment, upgrade and rollback runbook
 - [x] Release report (`docs/RELEASE_REPORT.md`)
 
 ## Follow-ups
-- [ ] Build and run images in CI; container image scan
-- [ ] Purge job for expired refresh tokens and OAuth states
-- [ ] Bulk re-encrypt command for `TOKEN_ENCRYPTION_KEYS` rotation
-- [ ] Self-service password reset by email
+- [x] Build and run images in CI
+- [ ] Container image scan (registry-side, ADR-026)
+- [x] Daily purge of expired tokens, OAuth states, reset links and old webhook ids
+- [x] `reencrypt-tokens` command for `TOKEN_ENCRYPTION_KEYS` rotation
+- [x] Live forecast accuracy monitoring (ADR-028)
+- [ ] Self-service password reset by e-mail
+- [ ] Real Anthropic and Shopify runs; staging deployment and capacity test
