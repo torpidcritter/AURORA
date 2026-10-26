@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field
 
 from app.schemas.common import ORMModel
 
@@ -12,7 +12,12 @@ RoleName = Literal["viewer", "operator", "analyst", "admin"]
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
+    """The username is the account's email address. `username` is accepted as an alias for clients that follow the
+    spec's username/password wording or the OAuth2 password-grant field names."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    email: str = Field(min_length=3, max_length=320, validation_alias=AliasChoices("email", "username"))
     password: str = Field(min_length=1, max_length=256)
 
 

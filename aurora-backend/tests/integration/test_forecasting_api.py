@@ -109,9 +109,8 @@ def test_risk_batch_kpi_recommendations(client, org, loaded):
 
 def test_backtest_endpoint(client, org, loaded):
     body = {"product_id": loaded["SKU-001"]["id"], "horizon": 7}
-    # Running backtests is an analyst capability; viewers see cached results through /forecast instead.
-    assert client.post("/intelligence/backtest", json=body, headers=org.h("viewer")).status_code == 403
-    r = client.post("/intelligence/backtest", json=body, headers=org.h("analyst"))
+    # Viewer+ per spec 8.4.
+    r = client.post("/intelligence/backtest", json=body, headers=org.h("viewer"))
     assert r.status_code == 200, r.text
     b = r.json()
     assert set(b["summary"]["methods"]) == {"sma", "ses", "holt_winters", "seasonal_naive", "croston_sba"}
@@ -222,3 +221,17 @@ def test_latest_forecasts_and_demand_trend(client, org, loaded):
     t = client.get("/intelligence/demand-trend?days=30", headers=org.h("viewer")).json()
     assert t["as_of"] == "2025-06-30" and len(t["points"]) == 30
     assert t["points"][-1]["date"] == "2025-06-30" and t["points"][-1]["units"] > 0
+
+
+def test_product_without_sales_history_reports_no_forecast(client, org, db):
+    from app.db.models import Product
+
+    p = Product(org_id=org.org_id, sku="NEW-1", name="Brand new", on_hand=12, inventory_known=True)
+    db.add(p)
+    db.commit()
+    r = client.post("/risk/stockout", json={"product_id": str(p.id)}, headers=org.h("viewer"))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "no_forecast" and body["risk_level"] == "unknown"
+    rec = client.post("/inventory/recommendation", json={"product_id": str(p.id)}, headers=org.h("viewer")).json()
+    assert rec["status"] == "no_forecast"

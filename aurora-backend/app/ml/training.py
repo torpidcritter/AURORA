@@ -19,7 +19,7 @@ import io
 import math
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 import numpy as np
 import pandas as pd
@@ -47,8 +47,11 @@ class TrainConfig:
     dropout: float = 0.1
     emb_dim: int = 8
     ff_dim: int = 128
-    es_days: int = 14
-    cal_days: int = 35
+    # Early-stop and calibration segments are sized in forecast windows, so every horizon gets the same number of
+    # held-out windows (8 and 29). At horizon 7 that is 14 and 35 days, as before. Fixed day counts left horizons 28
+    # and 56 with no windows at all, so training at those horizons always failed.
+    es_windows: int = 8
+    cal_windows: int = 29
     min_train_windows: int = 14
     max_epochs: int = 30
     patience: int = 5
@@ -71,8 +74,29 @@ class TrainConfig:
             "ff_dim": self.ff_dim,
         }
 
+    @property
+    def es_days(self) -> int:
+        return self.horizon + self.es_windows - 1
+
+    @property
+    def cal_days(self) -> int:
+        return self.horizon + self.cal_windows - 1
+
     def min_length(self) -> int:
         return self.window + self.horizon + self.min_train_windows - 1 + self.es_days + self.cal_days
+
+    @classmethod
+    def from_dict(cls, d: dict) -> TrainConfig:
+        """Load a config saved in a model bundle. Bundles written before segments were sized in windows store
+        es_days/cal_days instead; convert them so older models keep loading."""
+        d = dict(d)
+        horizon = int(d.get("horizon", cls.horizon))
+        if "es_days" in d:
+            d.setdefault("es_windows", int(d.pop("es_days")) - horizon + 1)
+        if "cal_days" in d:
+            d.setdefault("cal_windows", int(d.pop("cal_days")) - horizon + 1)
+        known = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in d.items() if k in known})
 
 
 def calendar_features(dates: pd.DatetimeIndex) -> np.ndarray:
@@ -418,7 +442,7 @@ def deserialize(data: bytes, expected_sha256: str | None = None) -> tuple[dict, 
     bundle = torch.load(io.BytesIO(data), map_location="cpu", weights_only=True)
     if bundle.get("format_version") != FORMAT_VERSION:
         raise ValueError(f"unsupported model format {bundle.get('format_version')}")
-    cfg = TrainConfig(**bundle["config"])
+    cfg = TrainConfig.from_dict(bundle["config"])
     model = TimeSeriesTransformer(len(bundle["products"]), **cfg.model_kwargs())  # type: ignore[arg-type]
     model.load_state_dict(bundle["state_dict"])
     model.eval()

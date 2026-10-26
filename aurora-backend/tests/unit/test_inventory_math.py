@@ -86,6 +86,16 @@ def test_zero_demand():
     assert r.days_of_cover is None
 
 
+def test_zero_demand_and_zero_stock_is_not_urgent():
+    # A discontinued SKU: nothing on hand, nothing expected to sell. Not a stockout.
+    r = compute(inp(forecast=[0.0] * 14, sigma_d=0.0, on_hand=0))
+    assert r.days_until_stockout is None and r.recommended_order_qty == 0
+    assert r.urgency_components["time"] == 0 and r.risk_level == "low"
+    assert days_until_stockout([0, 0, 0], 0) is None
+    # Negative stock (backorders) is already out, even with no further demand forecast.
+    assert days_until_stockout([0, 0, 0], -3) == 0.0
+
+
 def test_urgency_and_levels():
     r = compute(inp(on_hand=0))
     assert r.urgency_components["time"] == 100 and r.risk_level == "critical"

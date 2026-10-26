@@ -285,3 +285,33 @@ def test_cross_tenant_job_and_alert_access(client, org, other_org, db):
     assert client.post(f"/alerts/{al.id}/acknowledge", headers=other_org.h()).status_code == 404
     assert client.delete(f"/alerts/{al.id}", headers=other_org.h()).status_code == 404
     assert client.get(f"/models/registry/{uuid.uuid4()}", headers=other_org.h()).status_code == 404
+
+
+def test_model_age_is_measured_from_the_checkpoint_not_the_promotion(db, org):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.db.models import Alert, ModelVersion
+    from app.services import monitoring_service
+
+    now = datetime.now(UTC)
+    # A 60-day-old checkpoint that was promoted (e.g. by a rollback) a minute ago is still stale.
+    mv = ModelVersion(
+        org_id=org.org_id,
+        version="v1.0.0",
+        status="active",
+        artifact_key="models/x.pt",
+        checksum="0" * 64,
+        config={},
+        metrics={},
+        training_meta={},
+        promoted_at=now,
+        gate_passed=True,
+        created_at=now - timedelta(days=60),
+    )
+    db.add(mv)
+    db.commit()
+    monitoring_service.run_for_org(db, org.org_id)
+    stale = db.scalars(select(Alert).where(Alert.org_id == org.org_id, Alert.kind == "model_stale")).all()
+    assert len(stale) == 1 and stale[0].details["age_days"] == 60

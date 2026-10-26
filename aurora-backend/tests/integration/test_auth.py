@@ -28,6 +28,9 @@ def test_login_me_and_bad_password(client, org):
     assert bad.json()["error"]["code"] == "unauthorized"
     unknown = _login(client, "nobody@example.com")
     assert unknown.status_code == 401
+    # The spec's username/password wording: `username` is accepted as the email.
+    alias = client.post("/auth/login", json={"username": org.emails["viewer"], "password": PASSWORD})
+    assert alias.status_code == 200 and alias.json()["access_token"]
     assert unknown.json()["error"]["message"] == bad.json()["error"]["message"]  # no user enumeration
 
 

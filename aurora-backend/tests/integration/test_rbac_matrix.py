@@ -38,7 +38,7 @@ MATRIX = [
     ("POST", "/risk/stockout/batch", {}, "viewer"),
     ("GET", "/intelligence/kpi", None, "viewer"),
     ("GET", "/intelligence/recommendations", None, "viewer"),
-    ("POST", "/intelligence/backtest", {"product_id": X}, "analyst"),
+    ("POST", "/intelligence/backtest", {"product_id": X}, "viewer"),
     ("GET", "/intelligence/drift", None, "viewer"),
     ("GET", f"/intelligence/diagnostics/{X}", None, "viewer"),
     ("GET", "/simulate/types", None, "viewer"),

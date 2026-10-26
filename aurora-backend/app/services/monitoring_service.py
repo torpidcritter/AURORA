@@ -77,7 +77,9 @@ def run_for_org(db: Session, org_id: uuid.UUID) -> dict:
     active = model_registry.get_active(db, org_id)
     model_keys: set[str] = set()
     if active is not None:
-        age = (datetime.now(UTC) - (active.promoted_at or active.created_at)).days
+        # Age of the checkpoint (when it was trained and registered), not of the promotion: rolling back to an old
+        # version must not reset its age.
+        age = (datetime.now(UTC) - active.created_at).days
         if age > s.model_max_age_days:
             model_keys.add("model:stale")
             alert_service.upsert(

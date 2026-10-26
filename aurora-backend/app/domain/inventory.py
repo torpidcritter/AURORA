@@ -108,10 +108,15 @@ def mean_over(forecast: list[float], days: float) -> float:
 
 def days_until_stockout(forecast: list[float], on_hand: float, max_days: int = 3650) -> float | None:
     """First (fractional) day on which cumulative forecast demand exceeds on-hand stock.
-    Returns None when no stockout is expected (zero demand)."""
+    Returns None when no stockout is expected (zero demand).
+
+    Edge cases: negative stock means unfilled backorders, so the product is already out (0). Zero stock with zero
+    forecast demand is not a stockout (None): nothing is expected to sell, e.g. a discontinued SKU."""
     f = np.asarray(forecast, dtype=float)
-    if on_hand <= 0:
+    if on_hand < 0:
         return 0.0
+    if on_hand == 0:
+        return 0.0 if f.sum() > 0 else None
     cum = np.cumsum(f)
     idx = int(np.searchsorted(cum, on_hand, side="right"))
     if idx < len(f):

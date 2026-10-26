@@ -28,7 +28,6 @@ class Perm(StrEnum):
     manage_inventory = "manage_inventory"  # edit on-hand / lead-time settings
     acknowledge_alerts = "acknowledge_alerts"
     train_models = "train_models"
-    run_backtests = "run_backtests"
     manage_signals = "manage_signals"
     view_audit = "view_audit"
     manage_models = "manage_models"  # promote / rollback
@@ -40,7 +39,7 @@ class Perm(StrEnum):
 
 _VIEWER = {Perm.read}
 _OPERATOR = _VIEWER | {Perm.upload_data, Perm.manage_inventory, Perm.acknowledge_alerts}
-_ANALYST = _OPERATOR | {Perm.train_models, Perm.run_backtests, Perm.manage_signals, Perm.view_audit, Perm.view_ops}
+_ANALYST = _OPERATOR | {Perm.train_models, Perm.manage_signals, Perm.view_audit, Perm.view_ops}
 _ADMIN = set(Perm)
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Perm]] = {

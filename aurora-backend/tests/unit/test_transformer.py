@@ -19,7 +19,7 @@ def synthetic_series(n=4, days=200):
     return out
 
 
-SMALL = TrainConfig(max_epochs=4, d_model=32, nhead=4, num_layers=1, patience=2, cal_days=35, es_days=14)
+SMALL = TrainConfig(max_epochs=4, d_model=32, nhead=4, num_layers=1, patience=2)
 
 
 def test_forward_shapes_and_validation():
@@ -115,3 +115,34 @@ def test_mc_dropout_is_stochastic_only_when_enabled():
 def test_cancellation():
     with pytest.raises(training.TrainingCancelled):
         training.train(synthetic_series(2, 200), SMALL, should_cancel=lambda: True)
+
+
+@pytest.mark.parametrize("horizon", [7, 14, 28, 56])
+def test_every_supported_horizon_has_held_out_windows(horizon):
+    cfg = TrainConfig(horizon=horizon)
+    splits, skipped = split_products(synthetic_series(1, cfg.min_length() + 10), cfg)
+    assert not skipped
+    p = splits[0]
+    tr, es, cal = (windows_for(p, cfg, seg) for seg in ("train", "es", "cal"))
+    assert len(es.x) == cfg.es_windows == 8
+    assert len(cal.x) == cfg.cal_windows == 29
+    assert len(tr.x) >= cfg.min_train_windows
+    if horizon == 7:  # unchanged from the original fixed 14/35-day segments
+        assert (cfg.es_days, cfg.cal_days) == (14, 35)
+
+
+def test_training_at_horizon_28_succeeds():
+    cfg = TrainConfig(horizon=28, max_epochs=2, d_model=32, nhead=4, num_layers=1, patience=1)
+    bundle = training.train(synthetic_series(2, cfg.min_length() + 20), cfg)
+    assert bundle["config"]["horizon"] == 28
+    data, digest = training.serialize(bundle)
+    _, model = training.deserialize(data, digest)
+    assert model.horizon == 28
+
+
+def test_bundles_saved_with_day_based_segments_still_load():
+    old = {**TrainConfig().__dict__, "es_days": 14, "cal_days": 35}
+    old.pop("es_windows")
+    old.pop("cal_windows")
+    cfg = TrainConfig.from_dict(old)
+    assert (cfg.es_windows, cfg.cal_windows, cfg.es_days, cfg.cal_days) == (8, 29, 14, 35)
