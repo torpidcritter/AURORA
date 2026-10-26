@@ -81,14 +81,22 @@ built-in mode; and logout.
 
 ## Load test (Locust)
 
-Run only against a local or staging stack. Create several low-privilege accounts first, because login is rate limited
-per account.
+The load test lives in `aurora-backend/tests/load/` (`locustfile.py`, helpers in `load_support.py`); see
+`tests/load/README.md` for pacing, thresholds and exit codes. Run it only against a local or staging stack, from its
+own virtualenv (`requirements-load.txt`), with credentials in the environment:
 
 ```bash
 cd aurora-backend
-AURORA_USERS="load0@example.com:pw,load1@example.com:pw" \
-  locust -f loadtest/locustfile.py --host http://localhost:8100 --headless -u 20 -r 5 -t 90s --csv loadtest/results
+LOAD_USERS="load0@example.com:pw,load1@example.com:pw" \
+  .venv-load/bin/locust -f tests/load/locustfile.py --host http://localhost:8100 --headless -u 20 -r 5 -t 90s
 ```
+
+The script paces each account under the API's per-account rate limits and fails the run (exit 1) on a failure ratio
+above 1% or a p95 over its limits. CI runs a 30-second, 5-user smoke against the Compose stack with loose latency
+gates: it proves the API holds up under concurrent use, not how much traffic it can take.
+
+The figures below were measured with the earlier version of the script (`loadtest/locustfile.py`, which called the
+old `GET /forecast`). Re-measure on staging hardware before quoting capacity.
 
 Latest local result (2026-10-23): 4-CPU sandbox, one uvicorn process, one Celery worker, 12 synthetic products,
 20 users for 89 s, two runs back to back. 0 failures in 1,391 requests.
