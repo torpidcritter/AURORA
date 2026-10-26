@@ -45,8 +45,8 @@ The process exits 1 when a threshold is broken, 2 when no credentials were given
 | Variable | Default | Meaning |
 |---|---|---|
 | `LOAD_MAX_FAIL_RATIO` | 0.01 | Share of failed requests, sign-ins included |
-| `LOAD_MAX_P95_MS` | 5000 | p95 of every request except sign-ins (bcrypt is deliberately slow) |
-| `LOAD_P95_MS` | see below | Per-endpoint p95 limits; when set, replaces the defaults |
+| `LOAD_MAX_P95_MS` | 5000 | p95 of requests to endpoints without their own limit; sign-ins are not gated (bcrypt is deliberately slow) |
+| `LOAD_P95_MS` | see below | Per-endpoint p95 limits; when set, replaces the defaults. An endpoint listed here is judged only by its own limit |
 | `LOAD_TIMEOUT_S` | 60 | Per-request timeout |
 
 Default per-endpoint p95 limits (ms) are sized for a small stack with cold caches: `GET /products` 1000,

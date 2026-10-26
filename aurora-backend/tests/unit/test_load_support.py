@@ -9,6 +9,7 @@ from tests.load.load_support import (
     EndpointResult,
     Pacer,
     check_thresholds,
+    in_overall_gate,
     parse_accounts,
     parse_p95_limits,
 )
@@ -92,7 +93,7 @@ def test_thresholds_pass_and_fail() -> None:
     assert len(failing) == 1 and failing[0].startswith("failure ratio 5.00%")
 
     slow_overall = check_thresholds(ok, _r(100), _r(95, p95=9000), max_p95_ms=5000)
-    assert slow_overall == ["p95 of all requests except sign-in 9000 ms > 5000 ms"]
+    assert slow_overall == ["p95 of requests without their own limit 9000 ms > 5000 ms"]
 
     slow_endpoint = {"GET /products": _r(10, p95=DEFAULT_ENDPOINT_P95_MS["GET /products"] + 1)}
     assert check_thresholds(slow_endpoint, _r(10), _r(10))[0].startswith("GET /products p95")
@@ -102,3 +103,12 @@ def test_custom_endpoint_limits_replace_defaults_and_skip_unused_endpoints() -> 
     results = {"GET /products": _r(10, p95=1500), "POST /forecast": _r(0, p95=0)}
     # Defaults would fail GET /products (limit 1000); a custom map without it does not.
     assert check_thresholds(results, _r(10), _r(10), endpoint_p95_ms={"POST /forecast": 1.0}) == []
+
+
+def test_each_request_is_judged_by_one_latency_gate() -> None:
+    limits = {"POST /forecast": 15000.0}
+    assert not in_overall_gate("POST /forecast", limits)  # has its own limit
+    assert not in_overall_gate("POST /auth/login", limits)
+    assert not in_overall_gate("POST /auth/login (429, retried)", limits)
+    assert in_overall_gate("GET /products (start-up)", limits)
+    assert in_overall_gate("POST /forecast", {})  # no own limit once LOAD_P95_MS leaves it out

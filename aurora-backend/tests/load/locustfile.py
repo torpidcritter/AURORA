@@ -15,10 +15,10 @@ account below the limits (LOAD_PACING, default 90%) instead of measuring 429s. T
 LOAD_USERS, or raise API_RATE_LIMIT_PER_MINUTE / LOGIN_RATE_LIMIT_PER_MINUTE on the test stack and pass the same
 values in LOAD_API_RPM / LOAD_LOGIN_RPM. The per-endpoint budgets are fixed in the API code.
 
-Pass/fail: at exit the run fails (exit code 1) when the failure ratio exceeds LOAD_MAX_FAIL_RATIO (default 0.01) or
-the p95 of all requests except sign-ins exceeds LOAD_MAX_P95_MS (default 5000), or any endpoint's p95 exceeds its
-limit (defaults in load_support.DEFAULT_ENDPOINT_P95_MS; LOAD_P95_MS replaces them, e.g.
-LOAD_P95_MS="POST /forecast=5000,GET /products=500").
+Pass/fail: at exit the run fails (exit code 1) when the failure ratio exceeds LOAD_MAX_FAIL_RATIO (default 0.01),
+an endpoint's p95 exceeds its own limit (load_support.DEFAULT_ENDPOINT_P95_MS; LOAD_P95_MS replaces them, e.g.
+LOAD_P95_MS="POST /forecast=5000,GET /products=500"), or the p95 of the other requests, sign-ins excluded, exceeds
+LOAD_MAX_P95_MS (default 5000). Each request is judged by one latency gate only.
 
 In a distributed run (--master/--worker) the pacing is per worker process: divide the budgets between workers.
 """
@@ -45,10 +45,10 @@ from load_support import (  # noqa: E402  (needs the path above)
     DEFAULT_MAX_FAIL_RATIO,
     DEFAULT_MAX_P95_MS,
     ENDPOINT_LIMITS_PER_MINUTE,
-    LOGIN_NAME_PREFIX,
     EndpointResult,
     Pacer,
     check_thresholds,
+    in_overall_gate,
     parse_accounts,
     parse_p95_limits,
 )
@@ -200,19 +200,19 @@ def evaluate(stats) -> list[str]:  # type: ignore[no-untyped-def]
     from locust.stats import StatsEntry
 
     by_name = {f"{e.method} {e.name}": e for e in stats.entries.values()}
-    # Sign-ins are excluded from the overall latency gate: bcrypt makes them slow on purpose.
-    rest = StatsEntry(stats, "all except sign-in", "", use_response_times_cache=False)
-    for name, entry in by_name.items():
-        if not name.startswith(LOGIN_NAME_PREFIX):
-            rest.extend(entry)
     raw = os.environ.get("LOAD_P95_MS", "").strip()
+    endpoint_limits = parse_p95_limits(raw) if raw else DEFAULT_ENDPOINT_P95_MS
+    rest = StatsEntry(stats, "requests without their own limit", "", use_response_times_cache=False)
+    for name, entry in by_name.items():
+        if in_overall_gate(name, endpoint_limits):
+            rest.extend(entry)
     return check_thresholds(
         {name: _result(e) for name, e in by_name.items()},
         overall=_result(stats.total),
-        overall_excluding_login=_result(rest),
+        overall_ungated=_result(rest),
         max_fail_ratio=_env_float("LOAD_MAX_FAIL_RATIO", DEFAULT_MAX_FAIL_RATIO),
         max_p95_ms=_env_float("LOAD_MAX_P95_MS", DEFAULT_MAX_P95_MS),
-        endpoint_p95_ms=parse_p95_limits(raw) if raw else DEFAULT_ENDPOINT_P95_MS,
+        endpoint_p95_ms=endpoint_limits,
     )
 
 

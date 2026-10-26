@@ -19,7 +19,7 @@ ENDPOINT_LIMITS_PER_MINUTE = {"kpi": 30, "forecast": 60, "risk-batch": 20}
 # Default gates for a small local or staging stack, cold caches included. Tighten them with LOAD_P95_MS for a
 # warm-cache staging run (see README.md). Keys are "METHOD name" as Locust reports them.
 DEFAULT_MAX_FAIL_RATIO = 0.01
-DEFAULT_MAX_P95_MS = 5000.0  # all requests except the one-off sign-ins (bcrypt is deliberately slow)
+DEFAULT_MAX_P95_MS = 5000.0  # requests without their own limit, sign-ins excluded (see in_overall_gate)
 DEFAULT_ENDPOINT_P95_MS = {
     "GET /products": 1000.0,
     "GET /alerts": 1000.0,
@@ -29,6 +29,16 @@ DEFAULT_ENDPOINT_P95_MS = {
     "POST /risk/stockout/batch": 15000.0,
 }
 LOGIN_NAME_PREFIX = "POST /auth/login"
+
+
+def in_overall_gate(name: str, endpoint_p95_ms: Mapping[str, float]) -> bool:
+    """Whether a request counts towards the overall p95 gate.
+
+    Each request is judged by one latency gate: an endpoint with its own limit only by that limit, sign-ins by none
+    (bcrypt is deliberately slow), and everything else by the overall limit. Otherwise a couple of slow but in-budget
+    requests to a heavy endpoint, such as cold-cache forecasts, set the overall p95 of a short run on their own.
+    """
+    return not name.startswith(LOGIN_NAME_PREFIX) and name not in endpoint_p95_ms
 
 
 def parse_accounts(users: str | None, email: str | None, password: str | None) -> list[tuple[str, str]]:
@@ -106,7 +116,7 @@ class EndpointResult:
 def check_thresholds(
     results: Mapping[str, EndpointResult],
     overall: EndpointResult,
-    overall_excluding_login: EndpointResult,
+    overall_ungated: EndpointResult,
     max_fail_ratio: float = DEFAULT_MAX_FAIL_RATIO,
     max_p95_ms: float = DEFAULT_MAX_P95_MS,
     endpoint_p95_ms: Mapping[str, float] | None = None,
@@ -121,9 +131,9 @@ def check_thresholds(
     ratio = overall.failures / overall.requests
     if ratio > max_fail_ratio:
         problems.append(f"failure ratio {ratio:.2%} > {max_fail_ratio:.2%} ({overall.failures} failed)")
-    if overall_excluding_login.requests and overall_excluding_login.p95_ms > max_p95_ms:
+    if overall_ungated.requests and overall_ungated.p95_ms > max_p95_ms:
         problems.append(
-            f"p95 of all requests except sign-in {overall_excluding_login.p95_ms:.0f} ms > {max_p95_ms:.0f} ms"
+            f"p95 of requests without their own limit {overall_ungated.p95_ms:.0f} ms > {max_p95_ms:.0f} ms"
         )
     limits = DEFAULT_ENDPOINT_P95_MS if endpoint_p95_ms is None else endpoint_p95_ms
     for name, limit in limits.items():
