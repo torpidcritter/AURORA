@@ -23,15 +23,34 @@ import {
 import { fmt1, fmtPct, fmtShortDate } from "@/lib/format";
 import type { ForecastPoint, HistoryPoint, Recommendation } from "@/lib/types";
 
-// Categorical slots validated for the dark surface (#0c111c): blue, orange. Status colours are reserved for risk.
-export const SERIES = { s1: "#3987e5", s2: "#d95926" };
+/**
+ * Colour roles from the design system (spec 9.2). A colour always means the same thing on every chart:
+ *   - observed demand (actuals): neutral slate, solid line
+ *   - forecasts and primary indicators: sky #38bdf8
+ *   - scenarios, ML training and AI: violet #a78bfa
+ *   - status: emerald healthy/low, amber warning/medium, orange high, rose critical
+ * Sky and violet are hard to tell apart with deuteranopia (OKLab ΔE ≈ 5), and amber/orange are close for everyone, so
+ * series never rely on colour alone: forecasts and scenarios are dashed, risk levels have their own marker shape, and
+ * every multi-series chart has a legend, labelled tooltips and a data-table view.
+ */
+export const ROLE = {
+  actual: "#cbd5e1",
+  forecast: "#38bdf8",
+  ai: "#a78bfa",
+  aiSoft: "#ddd6fe",
+} as const;
 export const STATUS = { critical: "#fb7185", high: "#fb923c", medium: "#fbbf24", low: "#34d399", unknown: "#94a3b8" };
-const AXIS = { stroke: "#64748b", fontSize: 11, tickLine: false } as const;
+/** Marker shape per risk level, so the scatter does not depend on hue. */
+export const STATUS_SHAPE = { critical: "triangle", high: "diamond", medium: "square", low: "circle" } as const;
+export const DASH = { forecast: "6 4", scenario: "6 4", validation: "3 3" } as const;
+// Tick labels use the faint text token (#7c8aa1), which keeps 11px labels above 4.5:1 on the chart surfaces.
+const AXIS = { stroke: "#7c8aa1", fontSize: 11, tickLine: false } as const;
 const GRID = { stroke: "rgba(148,163,184,0.10)", vertical: false } as const;
+const LEGEND_STYLE = { fontSize: 12, color: "#94a3b8" } as const;
 
 function TooltipBox({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
   return (
-    <div className="rounded-lg border border-line bg-surface px-3 py-2 text-xs shadow-xl">
+    <div className="glass-strong rounded-lg border border-line px-3 py-2 text-xs shadow-xl">
       <div className="mb-1 font-medium text-ink">{title}</div>
       {rows.map((r) => (
         <div key={r.label} className="flex items-center justify-between gap-4">
@@ -138,17 +157,17 @@ export function DemandForecastChart({ history, forecast, coverage }: { history: 
               if (!active || !payload?.length) return null;
               const r = payload[0]!.payload as DemandRow;
               const out: { label: string; value: string; color?: string }[] = [];
-              if (r.actual != null) out.push({ label: r.imputed ? "Actual (imputed)" : "Actual", value: fmt1(r.actual), color: SERIES.s1 });
-              if (r.forecast != null && r.actual == null) out.push({ label: "Forecast", value: fmt1(r.forecast), color: SERIES.s2 });
+              if (r.actual != null) out.push({ label: r.imputed ? "Actual (imputed)" : "Actual", value: fmt1(r.actual), color: ROLE.actual });
+              if (r.forecast != null && r.actual == null) out.push({ label: "Forecast", value: fmt1(r.forecast), color: ROLE.forecast });
               if (r.band) out.push({ label: covLabel, value: `${fmt1(r.band[0])} – ${fmt1(r.band[1])}` });
               return <TooltipBox title={fmtShortDate(String(label))} rows={out} />;
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
-          {splitDate && <ReferenceLine x={splitDate} stroke="#64748b" strokeDasharray="3 3" />}
-          <Area dataKey="band" name={covLabel} stroke="none" fill={SERIES.s2} fillOpacity={0.18} isAnimationActive={false} legendType="square" />
-          <Line dataKey="actual" name="Actual" stroke={SERIES.s1} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
-          <Line dataKey="forecast" name="Forecast" stroke={SERIES.s2} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls />
+          <Legend wrapperStyle={LEGEND_STYLE} />
+          {splitDate && <ReferenceLine x={splitDate} stroke="#7c8aa1" strokeDasharray="3 3" label={{ value: "Forecast starts", position: "insideTopLeft", fill: "#94a3b8", fontSize: 11 }} />}
+          <Area dataKey="band" name={covLabel} stroke="none" fill={ROLE.forecast} fillOpacity={0.16} isAnimationActive={false} legendType="square" />
+          <Line legendType="plainline" dataKey="actual" name="Actual" stroke={ROLE.actual} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
+          <Line legendType="plainline" dataKey="forecast" name="Forecast" stroke={ROLE.forecast} strokeWidth={2} strokeDasharray={DASH.forecast} dot={false} isAnimationActive={false} connectNulls />
         </ComposedChart>
       </ResponsiveContainer>
     </ChartFrame>
@@ -163,8 +182,8 @@ export function TrendChart({ points, label }: { points: { date: string; units: n
           <CartesianGrid {...GRID} />
           <XAxis dataKey="date" tickFormatter={fmtShortDate} minTickGap={40} {...AXIS} />
           <YAxis {...AXIS} width={52} />
-          <Tooltip content={({ active, payload, label: l }) => (active && payload?.length ? <TooltipBox title={fmtShortDate(String(l))} rows={[{ label: "Units sold", value: fmt1(payload[0]!.value as number), color: SERIES.s1 }]} /> : null)} />
-          <Area dataKey="units" stroke={SERIES.s1} strokeWidth={2} fill={SERIES.s1} fillOpacity={0.12} isAnimationActive={false} />
+          <Tooltip content={({ active, payload, label: l }) => (active && payload?.length ? <TooltipBox title={fmtShortDate(String(l))} rows={[{ label: "Units sold", value: fmt1(payload[0]!.value as number), color: ROLE.actual }]} /> : null)} />
+          <Area dataKey="units" name="Units sold" stroke={ROLE.actual} strokeWidth={2} fill={ROLE.actual} fillOpacity={0.1} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
     </ChartFrame>
@@ -185,16 +204,16 @@ export function ScenarioChart({ curve }: { curve: { date: string; baseline: numb
                 <TooltipBox
                   title={fmtShortDate(String(label))}
                   rows={[
-                    { label: "Baseline", value: fmt1(payload[0]?.value as number), color: SERIES.s1 },
-                    { label: "Scenario", value: fmt1(payload[1]?.value as number), color: SERIES.s2 },
+                    { label: "Baseline forecast", value: fmt1(payload[0]?.value as number), color: ROLE.forecast },
+                    { label: "Scenario", value: fmt1(payload[1]?.value as number), color: ROLE.ai },
                   ]}
                 />
               ) : null
             }
           />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
-          <Line dataKey="baseline" name="Baseline forecast" stroke={SERIES.s1} strokeWidth={2} dot={false} isAnimationActive={false} />
-          <Line dataKey="scenario" name="Scenario" stroke={SERIES.s2} strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Legend wrapperStyle={LEGEND_STYLE} />
+          <Line legendType="plainline" dataKey="baseline" name="Baseline forecast" stroke={ROLE.forecast} strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Line legendType="plainline" dataKey="scenario" name="Scenario" stroke={ROLE.ai} strokeWidth={2} strokeDasharray={DASH.scenario} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </ChartFrame>
@@ -224,7 +243,7 @@ export function RiskScatter({ rows, onSelect }: { rows: Recommendation[]; onSele
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 8, right: 16, bottom: 16, left: -4 }}>
           <CartesianGrid stroke="rgba(148,163,184,0.10)" />
-          <XAxis type="number" dataKey="x" name="Days of stock" domain={[0, CAP]} {...AXIS} label={{ value: `Days until stockout (capped at ${CAP})`, position: "insideBottom", offset: -8, fill: "#64748b", fontSize: 11 }} />
+          <XAxis type="number" dataKey="x" name="Days of stock" domain={[0, CAP]} {...AXIS} label={{ value: `Days until stockout (capped at ${CAP})`, position: "insideBottom", offset: -8, fill: "#94a3b8", fontSize: 11 }} />
           <YAxis type="number" dataKey="y" name="P(stockout)" domain={[0, 100]} unit="%" {...AXIS} width={48} />
           <ZAxis range={[70, 70]} />
           <Tooltip
@@ -245,13 +264,15 @@ export function RiskScatter({ rows, onSelect }: { rows: Recommendation[]; onSele
               );
             }}
           />
-          <Legend verticalAlign="top" wrapperStyle={{ fontSize: 12, color: "#94a3b8", paddingBottom: 8 }} />
+          <Legend verticalAlign="top" wrapperStyle={{ ...LEGEND_STYLE, paddingBottom: 8 }} />
           {levels.map((lvl) => (
             <Scatter
               key={lvl}
               name={lvl[0]!.toUpperCase() + lvl.slice(1)}
               data={data.filter((d) => d.level === lvl)}
               fill={STATUS[lvl]}
+              shape={STATUS_SHAPE[lvl]}
+              legendType={STATUS_SHAPE[lvl]}
               stroke="#0c111c"
               strokeWidth={2}
               isAnimationActive={false}
@@ -275,7 +296,7 @@ export function ImportanceChart({ features }: { features: { feature: string; del
           <XAxis type="number" {...AXIS} />
           <YAxis type="category" dataKey="name" width={110} {...AXIS} />
           <Tooltip content={({ active, payload }) => (active && payload?.length ? <TooltipBox title={String((payload[0]!.payload as { name: string }).name)} rows={[{ label: "ΔMAE (units/day)", value: fmt1(payload[0]!.value as number) }]} /> : null)} />
-          <Bar dataKey="delta_mae_mean" fill={SERIES.s1} radius={[0, 4, 4, 0]} barSize={16} isAnimationActive={false} />
+          <Bar dataKey="delta_mae_mean" fill={ROLE.ai} radius={[0, 4, 4, 0]} barSize={16} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </ChartFrame>
@@ -290,10 +311,10 @@ export function LossChart({ history }: { history: { epoch: number; train_loss: n
           <CartesianGrid {...GRID} />
           <XAxis dataKey="epoch" {...AXIS} />
           <YAxis {...AXIS} width={48} />
-          <Tooltip content={({ active, payload, label }) => (active && payload?.length ? <TooltipBox title={`Epoch ${label}`} rows={payload.map((p, i) => ({ label: String(p.name), value: Number(p.value).toFixed(4), color: i === 0 ? SERIES.s1 : SERIES.s2 }))} /> : null)} />
-          <Legend wrapperStyle={{ fontSize: 12, color: "#94a3b8" }} />
-          <Line dataKey="train_loss" name="Training loss" stroke={SERIES.s1} strokeWidth={2} dot={false} isAnimationActive={false} />
-          <Line dataKey="val_loss" name="Validation loss" stroke={SERIES.s2} strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Tooltip content={({ active, payload, label }) => (active && payload?.length ? <TooltipBox title={`Epoch ${label}`} rows={payload.map((p, i) => ({ label: String(p.name), value: Number(p.value).toFixed(4), color: i === 0 ? ROLE.ai : ROLE.aiSoft }))} /> : null)} />
+          <Legend wrapperStyle={LEGEND_STYLE} />
+          <Line legendType="plainline" dataKey="train_loss" name="Training loss" stroke={ROLE.ai} strokeWidth={2} dot={false} isAnimationActive={false} />
+          <Line legendType="plainline" dataKey="val_loss" name="Validation loss" stroke={ROLE.aiSoft} strokeWidth={2} strokeDasharray={DASH.validation} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </ChartFrame>
