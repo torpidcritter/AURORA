@@ -8,27 +8,33 @@ from datetime import date, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.errors import ValidationFailed
 from app.db.models import Alert, Dataset, Product, SalesRecord
 from app.domain.inventory import InventoryInputError, InventoryInputs, compute
-from app.services import forecast_service, model_registry, series
+from app.services import forecast_service, model_registry, series, settings_service
 from app.services.forecast_service import ForecastRequest
 from app.services.product_service import get_product, org_as_of
+from app.services.settings_service import EffectiveSettings
 
 
-def resolve_params(product: Product, overrides: dict | None = None) -> tuple[dict, list[str]]:
-    s = get_settings()
+def resolve_params(
+    product: Product, overrides: dict | None = None, defaults: EffectiveSettings | None = None
+) -> tuple[dict, list[str]]:
+    """Request overrides, else the product's own values, else the organisation's defaults (``defaults``, from
+    settings_service.for_org; the global defaults when not given)."""
+    s = defaults or settings_service.resolve(None)
     o = overrides or {}
     assumptions = []
     lead = o.get("lead_time_days") or product.lead_time_days
     if lead is None:
         lead = s.default_lead_time_days
-        assumptions.append(f"Supplier lead time not set; default of {lead} days assumed")
+        scope = "organisation default" if s.is_override("default_lead_time_days") else "default"
+        assumptions.append(f"Supplier lead time not set; {scope} of {lead} days assumed")
     sl = o.get("service_level") or product.service_level
     if sl is None:
         sl = s.default_service_level
-        assumptions.append(f"Service level not set; default {sl:.0%} cycle service level assumed")
+        scope = "organisation default" if s.is_override("default_service_level") else "default"
+        assumptions.append(f"Service level not set; {scope} {_pct(sl)} cycle service level assumed")
     return {
         "lead_time_days": float(lead),
         "lead_time_std_days": float(o.get("lead_time_std_days") or 0.0),
@@ -39,6 +45,11 @@ def resolve_params(product: Product, overrides: dict | None = None) -> tuple[dic
         "pack_size": product.pack_size,
         "min_order_qty": product.min_order_qty,
     }, assumptions
+
+
+def _pct(x: float) -> str:
+    """0.95 -> "95%", 0.975 -> "97.5%"."""
+    return f"{x * 100:.1f}".rstrip("0").rstrip(".") + "%"
 
 
 def forecast_for(db: Session, org_id: uuid.UUID, product: Product, horizon: int, fast: bool) -> dict | None:
@@ -63,9 +74,10 @@ def recommendation(
     fast: bool = False,
     forecast_override: list[float] | None = None,
     sigma_multiplier: float = 1.0,
+    org_settings: EffectiveSettings | None = None,
 ) -> dict:
     product = get_product(db, org_id, product_id)
-    params, assumptions = resolve_params(product, overrides)
+    params, assumptions = resolve_params(product, overrides, org_settings or settings_service.for_org(db, org_id))
     base = {"product_id": str(product.id), "sku": product.sku, "name": product.name}
     if not product.inventory_known and (overrides or {}).get("on_hand") is None:
         return {
@@ -138,14 +150,19 @@ def narrative(r: dict) -> str:
 
 
 def risk_matrix(
-    db: Session, org_id: uuid.UUID, limit: int = 500, product_ids: list[uuid.UUID] | None = None
+    db: Session,
+    org_id: uuid.UUID,
+    limit: int = 500,
+    product_ids: list[uuid.UUID] | None = None,
+    org_settings: EffectiveSettings | None = None,
 ) -> list[dict]:
     q = select(Product.id).where(Product.org_id == org_id).order_by(Product.sku).limit(limit)
     if product_ids:
         q = q.where(Product.id.in_(product_ids))
+    eff = org_settings or settings_service.for_org(db, org_id)  # read once for the whole matrix
     out = []
     for pid in db.scalars(q).all():
-        r = recommendation(db, org_id, pid, fast=True)
+        r = recommendation(db, org_id, pid, fast=True, org_settings=eff)
         out.append(r)
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
     out.sort(key=lambda r: (order.get(r["risk_level"], 5), -(r.get("urgency") or 0)))

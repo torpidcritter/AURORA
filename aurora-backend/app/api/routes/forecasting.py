@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import Principal, require
 from app.api.routes.data import _read_limited
 from app.core import rate_limit
-from app.core.config import get_settings
 from app.core.errors import ValidationFailed
 from app.core.security import Perm
 from app.db.models import ExternalSignal, ForecastRun
@@ -28,6 +27,7 @@ from app.services import (
     inventory_service,
     scenario_service,
     series,
+    settings_service,
     signal_service,
 )
 from app.services.forecast_service import ForecastRequest
@@ -264,7 +264,7 @@ def backtest(body: BacktestIn, p: Principal = Depends(require(Perm.read)), db: S
 
 @router.get("/intelligence/drift")
 def drift_all(p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> dict:
-    s = get_settings()
+    s = settings_service.for_org(db, p.org_id)
     out = []
     from app.db.models import Product
 
@@ -283,7 +283,7 @@ def live_accuracy(
     db: Session = Depends(get_db),
 ) -> dict:
     """Served forecasts scored against the sales that arrived afterwards (see accuracy_service)."""
-    s = get_settings()
+    s = settings_service.for_org(db, p.org_id)
     out = accuracy_service.live_accuracy(db, p.org_id, window_days)
     return out | {"alert_metric": s.accuracy_live_metric, "alert_threshold": s.accuracy_live_threshold}
 

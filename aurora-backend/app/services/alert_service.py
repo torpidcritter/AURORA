@@ -7,13 +7,13 @@ import uuid
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import func, select, text, update
+from sqlalchemy import ColumnElement, case, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound
-from app.db.models import Alert, AlertDelivery
+from app.db.models import Alert, AlertDelivery, Organization
 
 logger = logging.getLogger("aurora.alerts")
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
@@ -116,15 +116,29 @@ def channels() -> list[str]:
     return ["log"] + (["webhook"] if get_settings().alert_webhook_url else [])
 
 
+def notify_condition() -> ColumnElement[bool]:
+    """SQL condition: the alert's severity is at or above its organisation's minimum severity to notify.
+
+    The minimum is the org's ``alert_min_severity`` override (see settings_service) or the global ALERT_MIN_SEVERITY
+    (default "high", the historical high/critical rule). It is evaluated in the query, per org, so alerts below one
+    org's minimum never fill the batch limit ahead of deliverable alerts. A stored value that is not a known severity
+    falls back to the global minimum, as settings_service does on read. Needs ``Organization`` joined to ``Alert``.
+    """
+    global_rank = SEVERITY_RANK[get_settings().alert_min_severity]
+    org_rank = case(SEVERITY_RANK, value=Organization.settings["alert_min_severity"].astext, else_=global_rank)
+    return case(SEVERITY_RANK, value=Alert.severity) >= org_rank
+
+
 def dispatch(db: Session, sender: httpx.Client | None = None) -> dict[str, int]:
-    """Deliver open high/critical alerts. A unique (alert_id, channel) row is claimed *before* sending, so retries
-    or concurrent dispatchers never deliver the same alert twice to a channel. Webhook delivery is at-least-once
-    from the receiver's perspective only if we crash between send and commit; the alert id is sent as an
-    idempotency key for that case."""
+    """Deliver open alerts at or above each organisation's minimum severity (``notify_condition``). A unique
+    (alert_id, channel) row is claimed *before* sending, so retries or concurrent dispatchers never deliver the same
+    alert twice to a channel. Webhook delivery is at-least-once from the receiver's perspective only if we crash
+    between send and commit; the alert id is sent as an idempotency key for that case."""
     stats = {"delivered": 0, "failed": 0, "skipped": 0}
     alerts = db.scalars(
         select(Alert)
-        .where(Alert.status == "open", Alert.severity.in_(("high", "critical")))
+        .join(Organization, Organization.id == Alert.org_id)
+        .where(Alert.status == "open", notify_condition())
         .order_by(Alert.created_at)
         .limit(500)
     ).all()

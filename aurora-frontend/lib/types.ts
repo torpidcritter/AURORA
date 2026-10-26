@@ -367,3 +367,29 @@ export interface ChatResponse {
   tool_calls: { tool: string; ok: boolean }[];
   notice?: string | null;
 }
+
+export type SettingValue = number | string;
+
+/** One organisation setting as served by GET /settings/org (labels and bounds come from the API schema). */
+export interface OrgSetting {
+  key: string;
+  label: string;
+  description: string;
+  group: "inventory" | "monitoring" | "alerts" | string;
+  unit: string | null;
+  type: "integer" | "number" | "choice";
+  minimum: number | null;
+  maximum: number | null;
+  minimum_exclusive: boolean;
+  maximum_exclusive: boolean;
+  choices: string[] | null;
+  value: SettingValue;
+  default: SettingValue;
+  override: SettingValue | null;
+  source: "org" | "default";
+}
+
+export interface OrgSettings {
+  items: OrgSetting[];
+  alert_channels: string[];
+}

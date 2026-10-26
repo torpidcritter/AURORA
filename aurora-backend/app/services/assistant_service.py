@@ -28,7 +28,7 @@ from app.core.errors import Forbidden
 from app.core.security import Perm
 from app.db.models import Alert, Product
 from app.ml import drift
-from app.services import inventory_service, series
+from app.services import inventory_service, series, settings_service
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def _get_alerts(db: Session, p: Principal, args: dict[str, Any]) -> dict[str, An
 
 
 def _drift_status(db: Session, p: Principal, args: dict[str, Any]) -> dict[str, Any]:
-    s = get_settings()
+    s = settings_service.for_org(db, p.org_id)
     skus = dict(db.execute(select(Product.id, Product.sku).where(Product.org_id == p.org_id)).tuples().all())
     out = []
     for pid, y in series.load_many(db, p.org_id).items():

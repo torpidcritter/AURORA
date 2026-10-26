@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     training_max_epochs: int = 30
     training_time_limit_s: int = 1800
     mc_dropout_samples: int = 20
+    # Inventory defaults for products without their own values. These and the monitoring thresholds below (except
+    # accuracy_wape_threshold and accuracy_live_window_days) are global defaults that each organisation can override
+    # (app/services/settings_service.py).
     default_lead_time_days: int = 7
     default_coverage_days: int = 14
     default_service_level: float = 0.95
@@ -129,6 +132,9 @@ class Settings(BaseSettings):
     # Processed webhook ids are kept this long for dedupe; must stay well above shopify_webhook_tolerance_s.
     webhook_event_retention_days: int = 30
     alert_webhook_url: str | None = None
+    # Open alerts at or above this severity are sent to the alert channels (log, and the webhook when configured).
+    # Organisations can override it in their settings (PATCH /settings/org).
+    alert_min_severity: Literal["low", "medium", "high", "critical"] = "high"
     frontend_url: str = "http://localhost:3100"
     # Fernet key(s), comma-separated, newest first, used to encrypt third-party access tokens at rest.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

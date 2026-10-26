@@ -36,6 +36,7 @@ class Perm(StrEnum):
     delete_alerts = "delete_alerts"
     manage_integrations = "manage_integrations"
     view_ops = "view_ops"
+    manage_settings = "manage_settings"  # organisation defaults, monitoring thresholds and alert routing
 
 
 _VIEWER = {Perm.read}
