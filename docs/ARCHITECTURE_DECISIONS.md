@@ -144,8 +144,9 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
   older than one hour are refused. The webhook id is stored in the same transaction as the sales upsert, so a
   redelivery is a no-op and a failed delivery rolls back fully and is retried by Shopify.
 - Orders become daily sales rows with `source="shopify"`; new SKUs are created with `inventory_known=false` so no
-  reorder advice is given until stock is entered. Test orders are skipped. `app/uninstalled` and `shop/redact` delete
-  the access token; the customer GDPR topics are acknowledged because Aurora stores no customer data.
+  reorder advice is given until stock is entered. Test orders are skipped. `app/uninstalled` deletes the access token;
+  `shop/redact` also erases the shop's order ledger; the customer GDPR topics are acknowledged because Aurora stores no
+  customer data.
 - Access tokens are encrypted with Fernet keys from `TOKEN_ENCRYPTION_KEYS` (newest first, older keys still decrypt).
   Production refuses to start with Shopify enabled and no keys.
 - Not done: edits, cancellations and refunds are not reconciled; Shopify and uploaded sales for the same period add up.

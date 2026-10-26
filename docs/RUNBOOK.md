@@ -1,7 +1,9 @@
 # Aurora Operations Runbook
 
 Scope: running Aurora on a single host with Docker Compose. This is the deployment shape the repository supports today.
-Items marked **(not exercised)** are written but were not run in the build environment, which had no Docker daemon.
+The build sandbox has no Docker daemon. The Compose stack is exercised in CI instead (job *Containers*: build, start,
+bootstrap, seed, smoke test with a training job, restricted DB role and MinIO storage checks). Items marked
+**(not exercised)** were written but not run anywhere.
 
 ## 1. Components
 
@@ -9,21 +11,29 @@ Items marked **(not exercised)** are written but were not run in the build envir
 |---|---|---|
 | `db` | PostgreSQL 16, volume `pgdata` | internal |
 | `redis` | Celery broker, rate limits, caches; volume `redisdata` | internal |
-| `migrate` | Runs `alembic upgrade head` once, then exits | none |
+| `migrate` | As the schema owner: `alembic upgrade head`, then `app.cli grant-app-role`; exits | none |
 | `api` | FastAPI (uvicorn), `/health/*`, `/metrics` | `127.0.0.1:8100` |
 | `worker` | Celery worker, queues `default` and `training` | none |
 | `beat` | Celery Beat: monitoring, stale-job reaper | none |
 | `web` | Next.js app and the BFF (`/api/auth/*`, `/api/proxy/*`) | `127.0.0.1:3100` |
+| `minio` | Optional (`COMPOSE_PROFILES=s3`): S3-compatible storage for development | console `127.0.0.1:9001` |
 
-Model artifacts live in the `artifacts` volume (`/data/artifacts`). The registry stores a SHA-256 for each artifact and
+**Database logins.** `migrate` connects as the schema owner `aurora` (`POSTGRES_PASSWORD`). `api`, `worker` and `beat`
+connect as `aurora_app` (`APP_DB_PASSWORD`), which `grant-app-role` creates and refreshes after every migration. It can
+read and write rows, cannot create, alter, drop or truncate tables, cannot edit `audit_events` (insert and retention
+expiry only) and cannot write `alembic_version`. The owner password is not passed to the long-running containers.
+Existing volumes pick the role up on the next `docker compose up` because `migrate` runs the grant every time.
+
+Model artifacts and uploaded files live in the `artifacts` volume (`/data/artifacts`), or in S3 when
+`STORAGE_BACKEND=s3` (the bucket is created on first use). The registry stores a SHA-256 for each artifact and
 refuses to load one whose checksum does not match.
 
-## 2. First deployment (not exercised)
+## 2. First deployment (exercised in CI)
 
 1. Copy the env template and generate secrets. Never commit `.env`.
    ```bash
    cp .env.example .env
-   python -c "import secrets; print(secrets.token_urlsafe(48))"   # use for POSTGRES_PASSWORD and SECRET_KEY (different values)
+   python -c "import secrets; print(secrets.token_urlsafe(48))"   # POSTGRES_PASSWORD, APP_DB_PASSWORD, SECRET_KEY: three different values
    ```
    Set `BOOTSTRAP_ADMIN_PASSWORD` (at least 10 characters with three of: lowercase, uppercase, digit, symbol) and `PUBLIC_URL` (the URL users open).
 2. Build and start:
@@ -39,7 +49,20 @@ refuses to load one whose checksum does not match.
    `docker compose run --rm api python -m app.cli seed-demo --products 12 --days 240`
 
 The backend refuses to start with `ENVIRONMENT=production` and a default or short `SECRET_KEY`, wildcard CORS, or Shopify
-enabled without `TOKEN_ENCRYPTION_KEYS`.
+enabled without `TOKEN_ENCRYPTION_KEYS`. It also refuses `AUTH_ENABLED=false`, `DB_ENABLED=false` and any `DB_TYPE`
+other than `postgresql`: the spec's variable names are accepted (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
+`DB_PASSWORD`, `ADMIN_PASSWORD`, `ARTIFACT_ARTIFACTS_DIR`), but those modes are not supported. `DATABASE_URL`,
+`BOOTSTRAP_ADMIN_PASSWORD` and `ARTIFACT_DIR` win when both forms are set.
+
+Optional settings in `.env` (log level, rate limits, S3, Anthropic model, Shopify webhook address, training limits) are
+passed to the backend containers; empty values mean the application default. See `.env.example`.
+
+**Object storage (optional).** For the bundled MinIO set `COMPOSE_PROFILES=s3`, `STORAGE_BACKEND=s3`,
+`S3_ENDPOINT_URL=http://minio:9000`, `S3_ACCESS_KEY` and `S3_SECRET_KEY` (8+ characters). MinIO then uses those as its
+root credentials, which is acceptable for a development box only. In production use a managed S3 bucket and a key
+limited to that bucket. Switching backends does not copy existing files: existing models must be retrained or copied.
+The MinIO image is pinned to `RELEASE.2025-04-22T22-12-26Z`; MinIO stopped publishing community images after 2025, so
+check for a maintained build before relying on it.
 
 ## 3. Reverse proxy, TLS and client addresses
 
@@ -75,9 +98,9 @@ CI checks that the models and migrations agree (`alembic check`).
 
 ## 5. Rollback
 
-- **Application:** rebuild or retag the previous images and `docker compose up -d`. Only migration `0001` exists today.
-  Before downgrading a future migration, restore the pre-upgrade backup rather than running `alembic downgrade` against
-  production data.
+- **Application:** rebuild or retag the previous images and `docker compose up -d`.
+  Migrations `0002` and `0003` only add a table and columns. Before downgrading, restore the pre-upgrade backup rather
+  than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.
 
@@ -111,8 +134,9 @@ destructive: do it only with the owner's sign-off.
 | Secret | Effect of rotating |
 |---|---|
 | `SECRET_KEY` | Signs JWT access tokens and keys the refresh-token hashes. Rotating it signs everyone out. If `TOKEN_ENCRYPTION_KEYS` is unset in development, the Shopify token key is derived from it. |
-| `POSTGRES_PASSWORD` | Change the role password in Postgres first (`ALTER ROLE`), then `.env`, then restart. |
-| `TOKEN_ENCRYPTION_KEYS` | Comma-separated Fernet keys, newest first. Add the new key at the front, restart; old tokens still decrypt. Reconnecting a shop re-encrypts its token with the newest key. A bulk re-encrypt command is not built yet. Remove the old key only after every shop has been re-encrypted. |
+| `POSTGRES_PASSWORD` | Owner login, used by `migrate` only. Change it in Postgres first (`ALTER ROLE aurora PASSWORD ...`), then `.env`. |
+| `APP_DB_PASSWORD` | Runtime login. Update `.env`, then `docker compose run --rm migrate` (sets the new password) and `docker compose up -d api worker beat`. Expect a short gap while they restart. |
+| `TOKEN_ENCRYPTION_KEYS` | Comma-separated Fernet keys, newest first. Add the new key at the front, restart; old tokens still decrypt. Then run `docker compose run --rm api python -m app.cli reencrypt-tokens`; it exits non-zero and names any shop it could not decrypt (reconnect those). Remove the old key only after it reports no failures. |
 | `SHOPIFY_API_SECRET` | Put the old value in `SHOPIFY_API_SECRET_PREVIOUS` while Shopify switches over; HMACs are accepted with either. |
 | `ANTHROPIC_API_KEY` | Replace and restart. Without a key the assistant answers from deterministic templates. |
 | `METRICS_TOKEN` | Update Prometheus' bearer token at the same time. |
@@ -123,9 +147,12 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 
 - Liveness `GET /health/live`; readiness `GET /health/ready` (DB, Redis and storage, 503 when one fails); summary `GET /health`.
 - Prometheus: scrape `api:8100/metrics` from inside the network with `Authorization: Bearer $METRICS_TOKEN`. Useful series:
-  `aurora_http_requests_total` and `aurora_http_request_duration_seconds` (by route template), `aurora_forecast_jobs_total`,
-  `aurora_forecasts_total`, `aurora_training_duration_seconds`, `aurora_active_alerts_total`, `aurora_queue_depth`,
-  `aurora_webhooks_total{outcome=processed|duplicate|bad_signature|error}`.
+  `aurora_http_requests_total` and `aurora_http_request_duration_seconds` (by route template, summed across all uvicorn
+  workers), `aurora_webhooks_total{outcome=processed|duplicate|bad_signature|error}`. Figures produced by the worker are
+  read from Postgres and Redis at scrape time (cached 15 s), so they are right whichever process did the work:
+  `aurora_forecast_jobs_total{kind,status}`, `aurora_jobs_in_progress{kind}`, `aurora_forecasts_total{method}`,
+  `aurora_training_duration_seconds`, `aurora_active_alerts_total`, `aurora_queue_depth{queue}`. Being derived from
+  stored rows, the totals drop if old rows are deleted; alert on rates over short windows.
 - Logs are JSON on stdout with a `request_id`, which is also returned in the `X-Request-ID` header and in error bodies.
 - In-app: *System & integrations* shows queue, job and component status; *Audit log* shows security-relevant actions.
 
@@ -140,9 +167,27 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | Shopify webhooks rejected (401) | `aurora_webhooks_total{outcome="bad_signature"}` rising; API log "invalid signature" | Check `SHOPIFY_API_SECRET`; during rotation set `SHOPIFY_API_SECRET_PREVIOUS` |
 | Assistant says it is in fallback mode | Key missing, refused, or API error | Check `ANTHROPIC_API_KEY` and API logs. The fallback answers are deterministic and use the same authorised data |
 
-## 10. Housekeeping not automated yet
+## 10. Housekeeping
 
-- Expired rows in `oauth_states` and `refresh_tokens` are not purged. Delete rows past `expires_at` on a schedule
-  (a deliberate SQL step; review before running).
-- Shopify order edits, cancellations and refunds are not reconciled. Shopify sales and uploaded CSV sales for the same
-  orders are summed, so do not upload both for the same period.
+Beat runs these daily; each can also be run by hand:
+
+| Task | Schedule | Manual command |
+|---|---|---|
+| Delete refresh tokens expired over a day ago, OAuth states expired over an hour ago, processed webhook ids older than `WEBHOOK_EVENT_RETENTION_DAYS` (30) | 03:30 UTC | `docker compose run --rm api python -m app.cli purge-expired` |
+| Delete audit events older than `AUDIT_RETENTION_DAYS` (365) | 03:15 UTC | none (task `aurora.cleanup_audit_logs`) |
+| Mark jobs without a recent heartbeat as failed | every 10 minutes | none |
+
+## 11. Shopify app setup
+
+1. In the Shopify Partner dashboard, set the app URL and the allowed redirect URL to `SHOPIFY_REDIRECT_URL`
+   (`https://<api host>/shopify/callback`).
+2. Configure the three mandatory compliance webhooks there (`customers/data_request`, `customers/redact`, `shop/redact`)
+   to `https://<api host>/shopify/webhooks/<topic>`, e.g. `/shopify/webhooks/shop/redact`. Aurora stores no customer data;
+   `shop/redact` deletes the shop's token and its order ledger (order ids and lines). Daily per-SKU totals already in
+   the tenant's sales history stay with the organisation.
+3. Set `SHOPIFY_WEBHOOK_BASE_URL` to the public HTTPS origin of the API if it differs from the redirect URL's origin.
+   After install Aurora subscribes to `orders/create`, `orders/cancelled`, `refunds/create` and `app/uninstalled`.
+   Shopify accepts only HTTPS addresses, so on a plain-HTTP development setup the card shows "webhooks not registered"
+   with the reason; *Re-register webhooks* retries after you fix the address.
+4. Refunds remove only restocked units from the sales history; cancellations remove what is left of the order. Shopify
+   retries failed deliveries for about four hours; deliveries older than `SHOPIFY_WEBHOOK_TOLERANCE_S` (12 h) are refused.

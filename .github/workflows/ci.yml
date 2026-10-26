@@ -186,11 +186,18 @@ jobs:
           echo "::add-mask::$MT"
           {
             echo "POSTGRES_PASSWORD=$(gen)"
+            echo "APP_DB_PASSWORD=$(gen)"
             echo "SECRET_KEY=$(openssl rand -base64 48 | tr -d '\n')"
             echo "PUBLIC_URL=http://localhost:3100"
             echo "BOOTSTRAP_ADMIN_EMAIL=admin@example.com"
             echo "BOOTSTRAP_ADMIN_PASSWORD=$PW"
             echo "METRICS_TOKEN=$MT"
+            # Exercise the S3 storage path against the optional local MinIO.
+            echo "COMPOSE_PROFILES=s3"
+            echo "STORAGE_BACKEND=s3"
+            echo "S3_ENDPOINT_URL=http://minio:9000"
+            echo "S3_ACCESS_KEY=aurora-ci"
+            echo "S3_SECRET_KEY=$(gen)"
           } > .env
           echo "SMOKE_PASSWORD=$PW" >> "$GITHUB_ENV"
           echo "METRICS_TOKEN=$MT" >> "$GITHUB_ENV"
@@ -214,6 +221,25 @@ jobs:
             echo "$s uid=$uid"
             test "$uid" = 10001
           done
+      - name: Runtime containers use the restricted database role
+        run: |
+          if docker compose exec -T api env | grep -q '^POSTGRES_PASSWORD='; then
+            echo "the API container must not receive the schema owner password"; exit 1
+          fi
+          docker compose exec -T api python - <<'PY'
+          from sqlalchemy import text
+          from sqlalchemy.exc import ProgrammingError
+          from app.db.session import get_engine
+          with get_engine().connect() as c:
+              assert c.execute(text("select current_user")).scalar() == "aurora_app"
+          try:
+              with get_engine().begin() as c:
+                  c.execute(text("create table intruder (id int)"))
+          except ProgrammingError as exc:
+              print("DDL refused as expected:", type(exc.orig).__name__)
+          else:
+              raise SystemExit("the runtime role was able to create a table")
+          PY
       - name: Bootstrap admin and seed synthetic demo data
         run: |
           docker compose run --rm api python -m app.cli bootstrap
@@ -223,6 +249,15 @@ jobs:
           SMOKE_EMAIL: admin@example.com
           SMOKE_TRAIN: "1"
         run: scripts/smoke-test.sh
+      - name: Dataset and model files were written to MinIO
+        run: |
+          docker compose exec -T api python - <<'PY'
+          from app.storage import get_storage
+          st = get_storage()
+          keys = [o["Key"] for o in st.client.list_objects_v2(Bucket=st.bucket).get("Contents", [])]
+          print(len(keys), "objects, e.g.", keys[:3])
+          assert any(k.endswith(".pt") for k in keys), "no model artifact in object storage"
+          PY
       - name: Compose logs on failure
         if: failure()
         run: docker compose logs --tail 200

@@ -31,7 +31,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -496,9 +496,16 @@ def handle_webhook(
         details = {"note": "Aurora stores no Shopify customer data"}
     elif shop is None:
         details = {"ignored": "shop not connected"}
-    elif topic in ("app/uninstalled", "shop/redact"):
+    elif topic == "app/uninstalled":
         _mark_uninstalled(shop)
         details = {"uninstalled": True}
+    elif topic == "shop/redact":
+        # Sent 48 hours after uninstall: erase what Aurora holds from Shopify about that shop. Order-level data (order
+        # ids and lines) is deleted; the daily per-SKU totals already folded into the tenant's sales history stay
+        # with the organisation and go when it is deleted.
+        _mark_uninstalled(shop)
+        gone = db.execute(delete(ShopifyOrder).where(ShopifyOrder.shop_domain == shop.shop_domain)).rowcount
+        details = {"uninstalled": True, "orders_erased": int(gone or 0)}
     elif shop.uninstalled_at is not None:
         details = {"ignored": "shop disconnected"}
     else:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import quote
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -12,7 +13,8 @@ _DEV_SECRET = "dev-insecure-secret-key-change-me-0123456789"  # noqa: S105 - rej
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # Empty variables count as unset, so Compose's ${VAR:-} pass-through falls back to the defaults below.
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore", env_ignore_empty=True)
 
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_host: str = "0.0.0.0"  # noqa: S104 - container bind address
@@ -27,6 +29,10 @@ class Settings(BaseSettings):
     db_max_overflow: int = 10
     db_pool_timeout_s: int = 10
     db_statement_timeout_ms: int = 30_000
+    # Least-privilege runtime role, created and granted by `python -m app.cli grant-app-role`, which runs as the schema
+    # owner straight after migrations. The API and workers then connect as this role (DML only, no DDL).
+    app_db_role: str = "aurora_app"
+    app_db_password: SecretStr | None = None
 
     # Redis / Celery
     redis_url: str = "redis://localhost:6379/0"
@@ -121,6 +127,19 @@ class Settings(BaseSettings):
 
     metrics_token: SecretStr | None = Field(default=None, description="Bearer token required by /metrics when set")
 
+    # Spec 10.2 variable names, accepted as alternatives. DATABASE_URL, BOOTSTRAP_ADMIN_PASSWORD and ARTIFACT_DIR win
+    # when both are set.
+    db_enabled: bool = True
+    db_type: str = "postgresql"
+    db_host: str | None = None
+    db_port: int = 5432
+    db_name: str = "aurora"
+    db_user: str = "aurora"
+    db_password: SecretStr | None = None
+    admin_password: SecretStr | None = None
+    artifact_artifacts_dir: str | None = None
+    auth_enabled: bool = True
+
     @field_validator("database_url")
     @classmethod
     def _normalise_db_url(cls, v: str) -> str:
@@ -130,6 +149,26 @@ class Settings(BaseSettings):
         elif v.startswith("postgresql://"):
             v = "postgresql+psycopg://" + v[len("postgresql://") :]
         return v
+
+    @model_validator(mode="after")
+    def _spec_variable_names(self) -> Settings:
+        if not self.auth_enabled:
+            raise ValueError("AUTH_ENABLED=false is not supported: Aurora always requires authentication")
+        if not self.db_enabled:
+            raise ValueError("DB_ENABLED=false is not supported: Aurora requires PostgreSQL")
+        if self.db_type.lower() not in ("postgresql", "postgres"):
+            raise ValueError("DB_TYPE must be postgresql: other databases are not supported")
+        if self.db_host and "database_url" not in self.model_fields_set:
+            pw = quote(self.db_password.get_secret_value(), safe="") if self.db_password else ""
+            auth = quote(self.db_user, safe="") + (f":{pw}" if pw else "")
+            self.database_url = (
+                f"postgresql+psycopg://{auth}@{self.db_host}:{self.db_port}/{quote(self.db_name, safe='')}"
+            )
+        if self.admin_password and self.bootstrap_admin_password is None:
+            self.bootstrap_admin_password = self.admin_password
+        if self.artifact_artifacts_dir and "artifact_dir" not in self.model_fields_set:
+            self.artifact_dir = self.artifact_artifacts_dir
+        return self
 
     @model_validator(mode="after")
     def _production_guards(self) -> Settings:

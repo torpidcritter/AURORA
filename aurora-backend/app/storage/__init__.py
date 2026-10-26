@@ -75,8 +75,33 @@ class S3Storage:
             aws_secret_access_key=s.s3_secret_key.get_secret_value() if s.s3_secret_key else None,
             region_name=s.s3_region,
         )
+        self.region = s.s3_region
+        self._bucket_ready = False
+
+    def _ensure_bucket(self) -> None:
+        """Create the bucket on first use if it does not exist (a fresh MinIO starts empty)."""
+        if self._bucket_ready:
+            return
+        from botocore.exceptions import ClientError
+
+        try:
+            self.client.head_bucket(Bucket=self.bucket)
+        except ClientError as exc:
+            code = str(exc.response.get("Error", {}).get("Code", ""))
+            if code not in ("404", "NoSuchBucket", "NotFound"):
+                raise
+            extra = (
+                {} if self.region == "us-east-1" else {"CreateBucketConfiguration": {"LocationConstraint": self.region}}
+            )
+            try:
+                self.client.create_bucket(Bucket=self.bucket, **extra)
+            except ClientError as create_exc:
+                if create_exc.response.get("Error", {}).get("Code") not in ("BucketAlreadyOwnedByYou",):
+                    raise
+        self._bucket_ready = True
 
     def put(self, key: str, data: bytes) -> str:
+        self._ensure_bucket()
         self.client.put_object(Bucket=self.bucket, Key=_check_key(key), Body=data)
         return key
 
@@ -96,7 +121,7 @@ class S3Storage:
         self.client.delete_object(Bucket=self.bucket, Key=_check_key(key))
 
     def healthcheck(self) -> bool:
-        self.client.head_bucket(Bucket=self.bucket)
+        self._ensure_bucket()
         return True
 
 

@@ -5,6 +5,7 @@ python -m app.cli seed-demo            # DEMO ONLY: load synthetic sales + inven
 python -m app.cli create-user EMAIL ROLE
 python -m app.cli purge-expired          # delete expired refresh tokens, OAuth states, old webhook ids
 python -m app.cli reencrypt-tokens       # re-encrypt Shopify tokens with the newest TOKEN_ENCRYPTION_KEYS key
+python -m app.cli grant-app-role         # as the schema owner, after migrations: create/refresh the runtime DB role
 """
 
 from __future__ import annotations
@@ -81,6 +82,17 @@ def create_user(email: str, role: str) -> None:
         print(f"Created {role} {email}.")
 
 
+def grant_app_role() -> None:
+    from app.db.roles import grant_app_role as grant
+    from app.db.session import get_engine
+
+    s = get_settings()
+    if s.app_db_password is None:
+        sys.exit("Set APP_DB_PASSWORD (at least 16 characters) for the application database role.")
+    grant(get_engine(), s.app_db_role, s.app_db_password.get_secret_value())
+    print(f"Role {s.app_db_role} can read and write rows; it cannot change the schema.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="aurora")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -93,6 +105,7 @@ def main() -> None:
     u.add_argument("role", choices=["viewer", "operator", "analyst", "admin"])
     sub.add_parser("purge-expired")
     sub.add_parser("reencrypt-tokens")
+    sub.add_parser("grant-app-role")
     a = ap.parse_args()
     if a.cmd == "bootstrap":
         bootstrap()
@@ -108,6 +121,8 @@ def main() -> None:
         if res["failed"]:
             print("Could not decrypt (reconnect these shops): " + ", ".join(res["failed"]), file=sys.stderr)
             sys.exit(1)
+    elif a.cmd == "grant-app-role":
+        grant_app_role()
     else:
         create_user(a.email, a.role)
 

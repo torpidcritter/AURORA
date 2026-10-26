@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.core import crypto
 from app.core.config import get_settings
 from app.core.metrics import WEBHOOKS
-from app.db.models import Product, SalesRecord, ShopifyShop
+from app.db.models import Product, SalesRecord, ShopifyOrder, ShopifyShop
 from app.services import shopify_service
 
 SECRET = "shpss_test_secret_not_real"
@@ -219,6 +219,20 @@ def test_test_orders_unknown_shops_and_uninstall(client, org, configured, db):
     assert webhook(client, {}, topic="customers/redact", wid="g1").status_code == 200
     assert webhook(client, {}, topic="products/delete", wid="x1").status_code == 404
     assert db.scalar(select(SalesRecord.id).limit(1)) is None
+
+
+def test_shop_redact_erases_order_level_data(client, org, other_org, configured, db):
+    connect(client, org)
+    assert webhook(client, ORDER, wid="o1").json()["lines"] == 2
+    other = ShopifyOrder(
+        org_id=other_org.org_id, shop_domain="other.myshopify.com", order_id="9", order_date=date(2026, 5, 1), lines={}
+    )
+    db.add(other)
+    db.commit()
+    r = webhook(client, {"shop_domain": SHOP}, topic="shop/redact", wid="r1").json()
+    assert r["uninstalled"] is True and r["orders_erased"] == 1
+    remaining = db.scalars(select(ShopifyOrder.shop_domain)).all()
+    assert remaining == ["other.myshopify.com"]
 
 
 def test_disconnect_is_tenant_scoped(client, org, other_org, configured, db):
