@@ -17,7 +17,7 @@ MATRIX = [
     ("GET", "/users", None, "admin"),
     ("PATCH", f"/users/{X}", {"full_name": "x"}, "admin"),
     ("POST", f"/users/{X}/password", {"new_password": "Xx-123456789"}, "admin"),
-    ("POST", "/datasets/upload", "FILE", "operator"),
+    ("POST", "/datasets/upload", "FILE", "analyst"),
     ("POST", "/upload-dataset", "FILE", "operator"),
     ("GET", "/datasets", None, "viewer"),
     ("GET", f"/datasets/{X}", None, "viewer"),

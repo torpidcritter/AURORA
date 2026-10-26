@@ -11,7 +11,7 @@ from app.devtools.synthetic import generate_sales, to_csv_bytes
 def loaded(client, org):
     df = generate_sales(n_products=3, days=120)
     r = client.post(
-        "/datasets/upload",
+        "/upload-dataset",
         files={"file": ("s.csv", io.BytesIO(to_csv_bytes(df)), "text/csv")},
         headers=org.h("operator"),
     )

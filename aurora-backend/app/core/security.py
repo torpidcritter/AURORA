@@ -25,6 +25,7 @@ class Role(StrEnum):
 class Perm(StrEnum):
     read = "read"  # dashboards, forecasts, products, alerts, simulations
     upload_data = "upload_data"
+    tag_datasets = "tag_datasets"  # programmatic upload with metadata tags (spec 8.2: Analyst+)
     manage_inventory = "manage_inventory"  # edit on-hand / lead-time settings
     acknowledge_alerts = "acknowledge_alerts"
     train_models = "train_models"
@@ -39,7 +40,7 @@ class Perm(StrEnum):
 
 _VIEWER = {Perm.read}
 _OPERATOR = _VIEWER | {Perm.upload_data, Perm.manage_inventory, Perm.acknowledge_alerts}
-_ANALYST = _OPERATOR | {Perm.train_models, Perm.manage_signals, Perm.view_audit, Perm.view_ops}
+_ANALYST = _OPERATOR | {Perm.train_models, Perm.tag_datasets, Perm.manage_signals, Perm.view_audit, Perm.view_ops}
 _ADMIN = set(Perm)
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Perm]] = {

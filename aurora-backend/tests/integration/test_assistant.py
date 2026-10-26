@@ -20,7 +20,7 @@ from app.services import assistant_service
 def _upload(client, org, n=3):
     df = generate_sales(n_products=n, days=120)
     r = client.post(
-        "/datasets/upload",
+        "/upload-dataset",
         files={"file": ("s.csv", io.BytesIO(to_csv_bytes(df)), "text/csv")},
         headers=org.h("operator"),
     )

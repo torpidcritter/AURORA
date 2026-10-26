@@ -73,19 +73,21 @@ async def upload_dataset(
     file: UploadFile = File(...),
     tags: str | None = Form(None, description='JSON object, e.g. {"source": "pos"}'),
     missing_policy: Literal["zero", "interpolate"] = Form("zero"),
-    p: Principal = Depends(require(Perm.upload_data)),
+    p: Principal = Depends(require(Perm.tag_datasets)),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
+    """Programmatic upload with metadata tags (Analyst+, spec 8.2). Operators use POST /upload-dataset."""
     return await _upload(file, tags, missing_policy, p, db)
 
 
-@router.post("/upload-dataset", response_model=UploadResponse, status_code=201, include_in_schema=False)
+@router.post("/upload-dataset", response_model=UploadResponse, status_code=201)
 async def upload_dataset_alias(
     file: UploadFile = File(...),
     missing_policy: Literal["zero", "interpolate"] = Form("zero"),
     p: Principal = Depends(require(Perm.upload_data)),
     db: Session = Depends(get_db),
 ) -> UploadResponse:
+    """Multipart CSV/Excel/JSON upload with validation and quality scoring (Operator+, spec 8.2)."""
     return await _upload(file, None, missing_policy, p, db)
 
 

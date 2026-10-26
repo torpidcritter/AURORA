@@ -96,6 +96,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 export default function UploadPage() {
   const { can } = useSession();
+  const canTag = can("tag_datasets");
   const [offset, setOffset] = useState(0);
   const list = useSWR<Page<Dataset>>(`/datasets?limit=10&offset=${offset}`);
   const [file, setFile] = useState<File | null>(null);
@@ -123,9 +124,14 @@ export default function UploadPage() {
     const form = new FormData();
     form.append("file", file);
     form.append("missing_policy", policy);
-    if (source.trim()) form.append("tags", JSON.stringify({ source: source.trim().slice(0, 100) }));
+    // Metadata tags go through the Analyst+ programmatic endpoint; plain uploads use the Operator+ one.
+    const tagged = canTag && source.trim().length > 0;
+    if (tagged) form.append("tags", JSON.stringify({ source: source.trim().slice(0, 100) }));
     try {
-      const r = await api<{ dataset: Dataset; duplicate: boolean }>("/datasets/upload", { method: "POST", form });
+      const r = await api<{ dataset: Dataset; duplicate: boolean }>(tagged ? "/datasets/upload" : "/upload-dataset", {
+        method: "POST",
+        form,
+      });
       setResult(r);
       setSelected(r.dataset);
       await list.mutate();
@@ -175,9 +181,11 @@ export default function UploadPage() {
                     <option value="interpolate">Unknown (interpolate between days)</option>
                   </Select>
                 </Field>
-                <Field label="Source tag (optional)" htmlFor="source">
-                  <Input id="source" value={source} maxLength={100} placeholder="e.g. pos-export-q2" onChange={(e) => setSource(e.target.value)} />
-                </Field>
+                {canTag && (
+                  <Field label="Source tag (optional)" htmlFor="source">
+                    <Input id="source" value={source} maxLength={100} placeholder="e.g. pos-export-q2" onChange={(e) => setSource(e.target.value)} />
+                  </Field>
+                )}
                 {error && <Notice tone="bad">{error}</Notice>}
                 <Button type="submit" variant="primary" loading={busy}>
                   Upload and validate

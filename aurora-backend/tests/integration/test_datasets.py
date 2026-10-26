@@ -7,12 +7,16 @@ from app.devtools.synthetic import generate_sales, to_csv_bytes
 
 
 def upload(client, h, data: bytes, name="sales.csv", **form):
-    return client.post("/datasets/upload", files={"file": (name, io.BytesIO(data), "text/csv")}, data=form, headers=h)
+    # Tagged uploads use the Analyst+ programmatic endpoint; plain uploads the Operator+ one (spec 8.2).
+    path = "/datasets/upload" if "tags" in form else "/upload-dataset"
+    return client.post(path, files={"file": (name, io.BytesIO(data), "text/csv")}, data=form, headers=h)
 
 
 def test_upload_review_and_products(client, org):
     df = generate_sales(n_products=3, days=60)
-    r = upload(client, org.h("operator"), to_csv_bytes(df), tags='{"source": "pos"}')
+    # Operators may upload but not attach metadata tags.
+    assert upload(client, org.h("operator"), to_csv_bytes(df), tags='{"source": "pos"}').status_code == 403
+    r = upload(client, org.h("analyst"), to_csv_bytes(df), tags='{"source": "pos"}')
     assert r.status_code == 201, r.text
     ds = r.json()["dataset"]
     assert ds["status"] == "imported"
@@ -55,7 +59,7 @@ def test_rejected_and_malformed_uploads(client, org):
     assert upload(client, org.h("operator"), b"", name="x.csv").status_code == 422
     assert upload(client, org.h("operator"), b"MZ\x90\x00", name="evil.exe").status_code == 422
     assert upload(client, org.h("operator"), b"date,sku,qty", name="x.xlsx").status_code == 422
-    assert upload(client, org.h("operator"), b"date,sku,qty\n", tags="not-json").status_code == 422
+    assert upload(client, org.h("analyst"), b"date,sku,qty\n", tags="not-json").status_code == 422
 
 
 def test_gap_policy_interpolate(client, org):
