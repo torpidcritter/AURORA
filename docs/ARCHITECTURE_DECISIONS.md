@@ -166,3 +166,33 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
   forwarded headers only from the addresses in uvicorn's `--forwarded-allow-ips`.
 - In Docker Compose the API port is reachable only from the compose network and `127.0.0.1`, so all sources are
   trusted there. Any other deployment must narrow `FORWARDED_ALLOW_IPS` to its proxy (see `RUNBOOK.md`).
+- When the web app and the API run on different platforms (Vercel + Railway), the API is reachable from the internet
+  and cannot trust `X-Forwarded-For` from arbitrary callers. The BFF then also sends the client address in
+  `X-Aurora-Client-IP` together with `X-Aurora-BFF: <BFF_SHARED_SECRET>`; the API believes the address only when the
+  secret matches (constant-time compare) and the value parses as an IP address. Browsers cannot set these headers
+  through the BFF, which forwards an allowlist of request headers. Without the secret, a split deployment would put
+  every user behind Vercel's few addresses into one login rate-limit bucket.
+
+## ADR-019 Two database logins: schema owner for migrations, restricted role at runtime
+- The API, worker and beat connect as `aurora_app`, which has row-level DML on the application tables only. It cannot
+  create, alter, drop or truncate tables, cannot update `audit_events` (insert, and delete for retention expiry) and
+  cannot write `alembic_version`. A SQL injection or code-execution bug in the app therefore cannot change the schema
+  or silently rewrite the audit trail.
+- `python -m app.cli grant-app-role` (Compose `migrate`) or `predeploy` (Railway) runs as the owner after every
+  migration and re-applies the grants, so new tables are covered; default privileges cover tables created in between.
+  The role is created without superuser, createdb, createrole, replication or bypassrls, and an existing role with any
+  of those attributes is refused rather than silently used.
+- Postgres row-level security was considered for tenant isolation and not adopted: tenant scoping is enforced in the
+  service layer and covered by tests; RLS would add a second mechanism that every query and migration must respect.
+
+## ADR-020 Deployment targets and variable names
+- Supported: Docker Compose on one host (exercised in CI), and Railway (API, worker, beat) + Vercel (web), which the
+  spec names (configuration in `aurora-backend/railway*.json`, not exercised).
+- The spec's variable names (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `ADMIN_PASSWORD`,
+  `ARTIFACT_ARTIFACTS_DIR`) are accepted alongside the names used in code. Modes the spec allows but Aurora does not
+  support are refused at startup instead of ignored: `AUTH_ENABLED=false`, `DB_ENABLED=false`, non-Postgres `DB_TYPE`.
+- The spec's `NEXT_PUBLIC_API_URL` and `NEXTAUTH_SECRET` are deliberately not used (ADR-004): the browser never calls
+  the API directly and holds no token, so the frontend has no public variables. `API_URL` and `BFF_SHARED_SECRET` are
+  server-side only.
+- Object storage: local disk for one host, S3-compatible otherwise. The bundled MinIO (Compose profile `s3`) is for
+  development; CI runs the stack with it so the S3 path is exercised.

@@ -60,6 +60,19 @@ export function clientAddress(req: NextRequest): string | null {
   return /^[0-9a-fA-F:.]{2,45}$/.test(last) ? last : null;
 }
 
+/** Headers that pass the client address to the API. X-Forwarded-For works when the API trusts this app as a proxy
+ *  (Compose). When the API is reachable from the internet (e.g. Vercel + Railway), it cannot trust X-Forwarded-For
+ *  from arbitrary callers, so the BFF also sends the address with a shared secret (BFF_SHARED_SECRET, server-side
+ *  only, same value on the API) that the API checks before believing it. */
+export function clientAddressHeaders(ip: string | null): Record<string, string> {
+  if (!ip) return {};
+  const secret = process.env.BFF_SHARED_SECRET;
+  return {
+    "x-forwarded-for": ip,
+    ...(secret ? { "x-aurora-client-ip": ip, "x-aurora-bff": secret } : {}),
+  };
+}
+
 const inflight = new Map<string, Promise<RefreshResult>>();
 
 export type RefreshResult =
@@ -74,7 +87,7 @@ export function refreshTokens(refreshToken: string, forwardedFor: string | null)
     try {
       const r = await fetch(`${apiUrl()}/auth/refresh`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...(forwardedFor ? { "x-forwarded-for": forwardedFor } : {}) },
+        headers: { "content-type": "application/json", ...clientAddressHeaders(forwardedFor) },
         body: JSON.stringify({ refresh_token: refreshToken }),
         cache: "no-store",
       });

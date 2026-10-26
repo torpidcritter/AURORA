@@ -110,7 +110,28 @@ CI checks that the models and migrations agree (`alembic check`).
 identical row counts, the `sales_records` content checksum matched, and both model artifacts restored from a tarball
 with SHA-256 values matching the registry. The `docker compose` wrappers below were not run.
 
-Back up both the database and the artifacts volume, at the same time:
+**Recovery objectives (proposed, confirm with the business owner):**
+
+| | Target | How |
+|---|---|---|
+| RPO (data you can lose) | 24 h with nightly dumps; minutes if the database provider offers point-in-time recovery (enable it) | `scripts/backup.sh` from cron, or the provider's backups |
+| RTO (time to restore service) | 2 h for a single host | restore the latest dump into a new database, restore artifacts, switch over (below) |
+| Retention | 14 daily dumps on the host (`RETENTION_DAYS`), plus monthly copies kept off-host for 12 months | copy off-host after each run |
+
+Models can be retrained from the restored sales history, so a lost artifact costs time, not data. Uploaded files
+are also kept in the database as parsed rows; the stored file is only needed to re-run an import.
+
+`scripts/backup.sh` dumps the database in custom format, refuses to keep a dump that `pg_restore --list` cannot read,
+tars the artifacts directory when `ARTIFACT_DIR` is set, and prunes its own files older than `RETENTION_DAYS`. Tested on
+2026-10-26 against the local E2E database: the dump restored into a new database with identical `sales_records` counts
+and migration version, and only expired backup files were pruned. Example cron entry on the Compose host:
+```bash
+15 2 * * * cd /opt/aurora && BACKUP_DATABASE_URL="postgresql://aurora:$(cat /opt/aurora/.pgpass-owner)@127.0.0.1:5432/aurora" BACKUP_DIR=/var/backups/aurora scripts/backup.sh >> /var/log/aurora-backup.log 2>&1
+```
+That needs the database port published to the host (it is not by default); otherwise use the `docker compose exec`
+form below. **A restore drill must be repeated before launch and after major upgrades** (spec section 11).
+
+Manual equivalent with Compose, database and artifacts volume at the same time:
 ```bash
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 docker compose exec -T db pg_dump -U aurora -Fc --no-owner aurora > aurora-$TS.dump
@@ -191,3 +212,45 @@ Beat runs these daily; each can also be run by hand:
    with the reason; *Re-register webhooks* retries after you fix the address.
 4. Refunds remove only restocked units from the sales history; cancellations remove what is left of the order. Shopify
    retries failed deliveries for about four hours; deliveries older than `SHOPIFY_WEBHOOK_TOLERANCE_S` (12 h) are refused.
+
+## 12. Cloud deployment: Railway (API, worker, beat) and Vercel (web) (not exercised)
+
+The repository contains the configuration; no Railway or Vercel project was available during the build, so this
+path has not been run.
+
+**Railway**, one project:
+
+1. Add PostgreSQL and Redis from the Railway catalogue.
+2. Create three services from this repository, each with root directory `aurora-backend` and a config file path
+   (the path is from the repository root): `api` → `/aurora-backend/railway.json`, `worker` →
+   `/aurora-backend/railway.worker.json`, `beat` → `/aurora-backend/railway.beat.json`. Keep `beat` at one replica.
+3. Variables (use Railway's secret variables; reference syntax shown):
+
+   | Variable | api | worker, beat |
+   |---|---|---|
+   | `ENVIRONMENT` | `production` | `production` |
+   | `DB_HOST`, `DB_PORT`, `DB_NAME` | `${{Postgres.PGHOST}}`, `${{Postgres.PGPORT}}`, `${{Postgres.PGDATABASE}}` | same |
+   | `DB_USER`, `DB_PASSWORD` | `aurora_app`, a generated value | same |
+   | `APP_DB_PASSWORD` | same generated value | not needed |
+   | `MIGRATION_DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (owner, used by the pre-deploy step) | **do not set** |
+   | `REDIS_URL` | `${{Redis.REDIS_URL}}` | same |
+   | `SECRET_KEY`, `TOKEN_ENCRYPTION_KEYS` | generated | same values |
+   | `STORAGE_BACKEND=s3`, `S3_*` | a bucket and a key limited to it | same |
+   | `BFF_SHARED_SECRET` | generated, 32+ characters | not needed |
+   | `FRONTEND_URL`, `API_CORS_ORIGINS` | the Vercel URL | `FRONTEND_URL` only |
+   | `SHOPIFY_*`, `ANTHROPIC_API_KEY`, `METRICS_TOKEN` | as needed | `ANTHROPIC_*`, `SHOPIFY_*` as needed |
+
+   On the first deploy the pre-deploy step (`python -m app.cli predeploy`) migrates as the owner and creates
+   `aurora_app`; the app then connects as that role. Railway gives the pre-deploy step the API service's variables, so
+   the owner URL is present in the API's environment (not in the worker's or beat's). That is weaker than Compose, where
+   only the one-off `migrate` container has it; a separate migration job would remove it.
+4. Object storage must be S3 on Railway: the API and the worker run in separate containers with no shared disk, and
+   container disks are wiped on redeploy.
+5. Expose only the `api` service publicly (Shopify needs `/shopify/*`). `/metrics` needs `METRICS_TOKEN`; `/docs` is
+   available on the public API domain, so block it at an edge proxy if that matters to you.
+
+**Vercel**: import the repository with root directory `aurora-frontend` (framework Next.js). Set server-side variables
+only: `API_URL` = the Railway API's public URL and `BFF_SHARED_SECRET` = the same value as on the API. There is no
+`NEXT_PUBLIC_API_URL` and no NextAuth: the browser only talks to the Next.js server, which holds the session in HttpOnly
+cookies and calls the API (ADR-004). Vercel overwrites `X-Forwarded-For` with the real client address; the BFF passes it
+to the API with the shared secret so rate limits and the audit log see each user rather than Vercel's addresses.

@@ -78,3 +78,23 @@ def test_grant_is_idempotent_and_refuses_weak_input() -> None:
         grant_app_role(owner, role, "short")
     with pytest.raises(ValueError, match="schema owner"):
         grant_app_role(owner, owner.url.username, APP_PW)
+
+
+def test_predeploy_migrates_and_grants_with_the_owner_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    from pydantic import SecretStr
+
+    from app import cli
+    from app.core.config import get_settings
+
+    owner = get_engine()
+    role = f"aurora_app_t{uuid.uuid4().hex[:8]}"
+    s = get_settings()
+    monkeypatch.setattr(s, "migration_database_url", SecretStr(owner.url.render_as_string(hide_password=False)))
+    monkeypatch.setattr(s, "app_db_role", role)
+    monkeypatch.setattr(s, "app_db_password", SecretStr(APP_PW))
+    try:
+        cli.predeploy()
+        with owner.connect() as c:
+            assert c.execute(text("SELECT rolcanlogin FROM pg_roles WHERE rolname = :r"), {"r": role}).scalar()
+    finally:
+        drop_app_role(owner, role)

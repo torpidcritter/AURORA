@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { apiUrl, clientAddress, isSameOriginMutation, setAuthCookies, type TokenPair } from "@/lib/server/auth";
+import {
+  apiUrl,
+  clientAddress,
+  clientAddressHeaders,
+  isSameOriginMutation,
+  setAuthCookies,
+  type TokenPair,
+} from "@/lib/server/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +32,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       headers: {
         "content-type": "application/json",
         "user-agent": req.headers.get("user-agent") ?? "aurora-bff",
-        ...(fwd ? { "x-forwarded-for": fwd } : {}),
+        ...clientAddressHeaders(fwd),
       },
       body: JSON.stringify({ email: payload.email, password: payload.password }),
       cache: "no-store",

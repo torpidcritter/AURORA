@@ -171,3 +171,41 @@ def test_audit_records_login(client, org, db):
     rows = db.query(AuditEvent).filter(AuditEvent.action == "auth.login").all()
     assert {r.outcome for r in rows} >= {"success", "failure"}
     assert all("password" not in str(r.details) for r in rows)
+
+
+def test_client_address_from_bff_needs_the_shared_secret(client, org, db, monkeypatch):
+    from pydantic import SecretStr
+
+    from app.db.models import AuditEvent
+
+    monkeypatch.setattr(get_settings(), "bff_shared_secret", SecretStr("bff-shared-secret-0123456789abcdef"))
+
+    def login_from(ip: str, secret: str) -> int:
+        headers = {"x-aurora-client-ip": ip, "x-aurora-bff": secret}
+        return client.post(
+            "/auth/login", json={"email": org.emails["viewer"], "password": "bad"}, headers=headers
+        ).status_code
+
+    login_from("203.0.113.9", "bff-shared-secret-0123456789abcdef")
+    login_from("198.51.100.4", "forged")
+    login_from("not an address", "bff-shared-secret-0123456789abcdef")
+    ips = [r.ip for r in db.query(AuditEvent).filter(AuditEvent.action == "auth.login").order_by(AuditEvent.id)]
+    assert ips == ["203.0.113.9", "testclient", "testclient"]
+
+
+def test_rate_limit_is_per_reported_client(client, org, monkeypatch):
+    from pydantic import SecretStr
+
+    secret = "bff-shared-secret-0123456789abcdef"
+    monkeypatch.setattr(get_settings(), "bff_shared_secret", SecretStr(secret))
+    per_ip = get_settings().login_rate_limit_per_minute * 3
+
+    def status(ip: str, email: str) -> int:
+        headers = {"x-aurora-client-ip": ip, "x-aurora-bff": secret}
+        return client.post("/auth/login", json={"email": email, "password": "bad"}, headers=headers).status_code
+
+    # Different e-mail addresses each time, so only the per-address limit can trip.
+    codes = [status("203.0.113.9", f"guess{i}@example.com") for i in range(per_ip + 2)]
+    assert codes[0] == 401 and codes[-1] == 429
+    # Another user behind the same BFF is not blocked by the first client's attempts.
+    assert status("198.51.100.4", "someone@example.com") == 401

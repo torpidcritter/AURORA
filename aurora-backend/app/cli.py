@@ -6,6 +6,7 @@ python -m app.cli create-user EMAIL ROLE
 python -m app.cli purge-expired          # delete expired refresh tokens, OAuth states, old webhook ids
 python -m app.cli reencrypt-tokens       # re-encrypt Shopify tokens with the newest TOKEN_ENCRYPTION_KEYS key
 python -m app.cli grant-app-role         # as the schema owner, after migrations: create/refresh the runtime DB role
+python -m app.cli predeploy              # platform release hook: migrate + grant using MIGRATION_DATABASE_URL
 """
 
 from __future__ import annotations
@@ -93,6 +94,31 @@ def grant_app_role() -> None:
     print(f"Role {s.app_db_role} can read and write rows; it cannot change the schema.")
 
 
+def predeploy() -> None:
+    """Release hook for platforms such as Railway: migrations and grants as the owner, then the app starts."""
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import create_engine
+
+    from app.core.config import normalise_db_url
+    from app.db.roles import grant_app_role as grant
+
+    s = get_settings()
+    url = normalise_db_url(s.migration_database_url.get_secret_value()) if s.migration_database_url else s.database_url
+    cfg = Config("alembic.ini")
+    cfg.attributes["database_url"] = url
+    command.upgrade(cfg, "head")
+    if s.app_db_password is None:
+        print("APP_DB_PASSWORD is not set: the application keeps using the owner login (see docs/RUNBOOK.md).")
+        return
+    engine = create_engine(url)
+    try:
+        grant(engine, s.app_db_role, s.app_db_password.get_secret_value())
+    finally:
+        engine.dispose()
+    print(f"Migrated; role {s.app_db_role} refreshed.")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(prog="aurora")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -106,6 +132,7 @@ def main() -> None:
     sub.add_parser("purge-expired")
     sub.add_parser("reencrypt-tokens")
     sub.add_parser("grant-app-role")
+    sub.add_parser("predeploy")
     a = ap.parse_args()
     if a.cmd == "bootstrap":
         bootstrap()
@@ -123,6 +150,8 @@ def main() -> None:
             sys.exit(1)
     elif a.cmd == "grant-app-role":
         grant_app_role()
+    elif a.cmd == "predeploy":
+        predeploy()
     else:
         create_user(a.email, a.role)
 

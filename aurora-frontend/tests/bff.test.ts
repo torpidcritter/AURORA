@@ -103,3 +103,19 @@ describe("clientAddress", () => {
     expect(clientAddress(mk())).toBeNull();
   });
 });
+
+describe("clientAddressHeaders", () => {
+  it("adds the signed client address only when a shared secret is configured", async () => {
+    const { clientAddressHeaders } = await import("@/lib/server/auth");
+    vi.stubEnv("BFF_SHARED_SECRET", "");
+    expect(clientAddressHeaders("10.0.0.7")).toEqual({ "x-forwarded-for": "10.0.0.7" });
+    vi.stubEnv("BFF_SHARED_SECRET", "s3cret-value");
+    expect(clientAddressHeaders("10.0.0.7")).toEqual({
+      "x-forwarded-for": "10.0.0.7",
+      "x-aurora-client-ip": "10.0.0.7",
+      "x-aurora-bff": "s3cret-value",
+    });
+    expect(clientAddressHeaders(null)).toEqual({});
+    vi.unstubAllEnvs();
+  });
+});

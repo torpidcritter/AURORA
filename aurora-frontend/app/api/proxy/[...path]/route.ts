@@ -5,6 +5,7 @@ import {
   REFRESH_COOKIE,
   apiUrl,
   clientAddress,
+  clientAddressHeaders,
   clearAuthCookies,
   isSameOriginMutation,
   refreshTokens,
@@ -76,7 +77,7 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ path: string[] 
       if (v) headers.set(h, v);
     }
     headers.set("authorization", `Bearer ${access}`);
-    if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+    for (const [k, v] of Object.entries(clientAddressHeaders(forwardedFor))) headers.set(k, v);
     return fetch(target, { method, headers, body, cache: "no-store", redirect: "manual" });
   };
 

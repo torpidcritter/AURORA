@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hmac
+import ipaddress
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,6 +13,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.errors import Forbidden, Unauthorized
 from app.core.security import Perm, decode_access_token, has_perm
 from app.db.models import User
@@ -32,8 +35,22 @@ class Principal:
 
 
 def client_ip(request: Request) -> str | None:
-    # Only trust X-Forwarded-For when uvicorn is started with --proxy-headers behind a known proxy;
-    # request.client already reflects that configuration.
+    """The end user's address, used for rate limits and the audit log.
+
+    When the web app's BFF proves itself with BFF_SHARED_SECRET, the address it reports is used: that is how a
+    publicly reachable API (Vercel + Railway) learns the real client without trusting X-Forwarded-For from anyone.
+    Otherwise request.client, which reflects X-Forwarded-For only when uvicorn trusts the proxy (--proxy-headers with
+    FORWARDED_ALLOW_IPS).
+    """
+    secret = get_settings().bff_shared_secret
+    if secret is not None:
+        sent = request.headers.get("x-aurora-bff", "")
+        reported = request.headers.get("x-aurora-client-ip", "")
+        if sent and reported and hmac.compare_digest(sent.encode(), secret.get_secret_value().encode()):
+            try:
+                return str(ipaddress.ip_address(reported.strip()))
+            except ValueError:
+                pass
     return request.client.host if request.client else None
 
 

@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # owner straight after migrations. The API and workers then connect as this role (DML only, no DDL).
     app_db_role: str = "aurora_app"
     app_db_password: SecretStr | None = None
+    # Owner connection used only by `python -m app.cli predeploy` (migrations + grants) on platforms where the
+    # pre-deploy step shares the API's environment, e.g. Railway. Falls back to DATABASE_URL.
+    migration_database_url: SecretStr | None = None
 
     # Redis / Celery
     redis_url: str = "redis://localhost:6379/0"
@@ -126,6 +129,9 @@ class Settings(BaseSettings):
     token_encryption_keys: SecretStr | None = None
 
     metrics_token: SecretStr | None = Field(default=None, description="Bearer token required by /metrics when set")
+    # Shared with the web app's BFF (server-side only). When set, the client address the BFF reports in
+    # X-Aurora-Client-IP is trusted if X-Aurora-BFF carries this value. Needed when the API is publicly reachable.
+    bff_shared_secret: SecretStr | None = None
 
     # Spec 10.2 variable names, accepted as alternatives. DATABASE_URL, BOOTSTRAP_ADMIN_PASSWORD and ARTIFACT_DIR win
     # when both are set.
@@ -143,12 +149,7 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _normalise_db_url(cls, v: str) -> str:
-        # Managed providers (Railway, Heroku) hand out postgres:// URLs.
-        if v.startswith("postgres://"):
-            v = "postgresql+psycopg://" + v[len("postgres://") :]
-        elif v.startswith("postgresql://"):
-            v = "postgresql+psycopg://" + v[len("postgresql://") :]
-        return v
+        return normalise_db_url(v)
 
     @model_validator(mode="after")
     def _spec_variable_names(self) -> Settings:
@@ -180,6 +181,8 @@ class Settings(BaseSettings):
                 )
             if "*" in self.cors_origins:
                 raise ValueError("Wildcard CORS origins are not allowed outside development")
+            if self.bff_shared_secret is not None and len(self.bff_shared_secret.get_secret_value()) < 32:
+                raise ValueError("BFF_SHARED_SECRET must be at least 32 characters")
             if self.shopify_api_key and not self.token_encryption_keys:
                 raise ValueError("TOKEN_ENCRYPTION_KEYS is required when the Shopify integration is enabled")
         return self
@@ -199,6 +202,15 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment in ("staging", "production")
+
+
+def normalise_db_url(v: str) -> str:
+    """Managed providers (Railway, Heroku) hand out postgres:// URLs; SQLAlchemy needs the psycopg driver named."""
+    if v.startswith("postgres://"):
+        return "postgresql+psycopg://" + v[len("postgres://") :]
+    if v.startswith("postgresql://"):
+        return "postgresql+psycopg://" + v[len("postgresql://") :]
+    return v
 
 
 @lru_cache
