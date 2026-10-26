@@ -169,3 +169,63 @@ jobs:
           name: playwright-report
           path: aurora-frontend/test-results
           retention-days: 7
+
+  containers:
+    name: Containers (build images, run Compose stack, smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write .env with throwaway secrets for this run
+        run: |
+          gen() { openssl rand -hex 24; }
+          PW="Smoke-$(gen)"
+          MT="$(gen)"
+          echo "::add-mask::$PW"
+          echo "::add-mask::$MT"
+          {
+            echo "POSTGRES_PASSWORD=$(gen)"
+            echo "SECRET_KEY=$(openssl rand -base64 48 | tr -d '\n')"
+            echo "PUBLIC_URL=http://localhost:3100"
+            echo "BOOTSTRAP_ADMIN_EMAIL=admin@example.com"
+            echo "BOOTSTRAP_ADMIN_PASSWORD=$PW"
+            echo "METRICS_TOKEN=$MT"
+          } > .env
+          echo "SMOKE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "METRICS_TOKEN=$MT" >> "$GITHUB_ENV"
+      - name: Build images
+        run: docker compose build
+      - name: Start the stack
+        run: |
+          docker compose up -d
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8100/health/ready >/dev/null && curl -sf -o /dev/null http://localhost:3100/login && break
+            sleep 5
+          done
+          docker compose ps
+          curl -sf http://127.0.0.1:8100/health/ready
+          curl -sf -o /dev/null http://localhost:3100/login
+          test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = 0
+      - name: Containers run as the unprivileged user
+        run: |
+          for s in api worker web; do
+            uid=$(docker compose exec -T "$s" id -u)
+            echo "$s uid=$uid"
+            test "$uid" = 10001
+          done
+      - name: Bootstrap admin and seed synthetic demo data
+        run: |
+          docker compose run --rm api python -m app.cli bootstrap
+          docker compose run --rm api python -m app.cli seed-demo --products 8 --days 200
+      - name: Smoke test (incl. a 1-epoch training job on the worker container)
+        env:
+          SMOKE_EMAIL: admin@example.com
+          SMOKE_TRAIN: "1"
+        run: scripts/smoke-test.sh
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
