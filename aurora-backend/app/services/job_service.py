@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound, Unavailable
-from app.core.metrics import FORECAST_JOBS
 from app.db.models import Job
 
 logger = logging.getLogger("aurora.jobs")
@@ -118,7 +117,6 @@ def heartbeat(db: Session, job_id: uuid.UUID, progress: float | None = None, par
 def finish(
     db: Session, job_id: uuid.UUID, status: str, *, result: dict | None = None, error: str | None = None
 ) -> None:
-    kind = db.scalar(select(Job.kind).where(Job.id == job_id)) or "unknown"
     values: dict = {"status": status, "finished_at": now()}
     if status == "succeeded":
         values["progress"] = 1.0
@@ -128,7 +126,6 @@ def finish(
         values["error"] = error[:4000]
     db.execute(update(Job).where(Job.id == job_id, Job.status == "running").values(**values))
     db.commit()
-    FORECAST_JOBS.labels(kind, status).inc()
 
 
 def requeue_for_retry(db: Session, job_id: uuid.UUID, error: str) -> bool:

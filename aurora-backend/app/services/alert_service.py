@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound
-from app.core.metrics import ACTIVE_ALERTS
 from app.db.models import Alert, AlertDelivery
 
 logger = logging.getLogger("aurora.alerts")
@@ -111,10 +110,6 @@ def resolve(db: Session, org_id: uuid.UUID, alert_id: uuid.UUID) -> Alert:
         a.status = "resolved"
         a.resolved_at = datetime.now(UTC)
     return a
-
-
-def refresh_gauge(db: Session) -> None:
-    ACTIVE_ALERTS.set(db.scalar(select(func.count()).select_from(Alert).where(Alert.status != "resolved")) or 0)
 
 
 def channels() -> list[str]:

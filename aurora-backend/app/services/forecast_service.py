@@ -17,7 +17,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ValidationFailed
-from app.core.metrics import FORECASTS_SERVED
 from app.core.redis_client import get_redis
 from app.db.models import BacktestResult, ExternalSignal, ForecastRun, Product
 from app.ml import backtesting
@@ -333,7 +332,6 @@ def generate(db: Session, org_id: uuid.UUID, req: ForecastRequest) -> dict:
         ],
         "warnings": warnings,
     }
-    FORECASTS_SERVED.labels(method).inc()
     if req.persist:
         run = ForecastRun(
             org_id=org_id,

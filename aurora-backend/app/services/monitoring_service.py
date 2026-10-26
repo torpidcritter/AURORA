@@ -109,5 +109,4 @@ def run_for_org(db: Session, org_id: uuid.UUID) -> dict:
             out["model_alerts"] += 1
     out["resolved"] += alert_service.resolve_where_cleared(db, org_id, "model:", model_keys)
     db.commit()
-    alert_service.refresh_gauge(db)
     return out

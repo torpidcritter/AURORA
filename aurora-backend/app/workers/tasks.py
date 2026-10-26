@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -12,7 +11,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import get_settings
-from app.core.metrics import TRAINING_SECONDS
 from app.db.models import AuditEvent, Organization, Product
 from app.db.session import get_sessionmaker
 from app.services import alert_service, job_service, maintenance, model_registry, monitoring_service, series
@@ -86,7 +84,6 @@ def _train(db, job) -> dict:  # type: ignore[no-untyped-def]
     )
     skus = dict(db.execute(select(Product.id, Product.sku).where(Product.org_id == job.org_id)).tuples().all())
     data = {skus[pid]: y for pid, y in series.load_many(db, job.org_id).items() if pid in skus}
-    started = time.monotonic()
     history: list[dict] = []
 
     def progress(epoch: int, max_epochs: int, tl: float, vl: float) -> None:
@@ -116,7 +113,6 @@ def _train(db, job) -> dict:  # type: ignore[no-untyped-def]
         model_registry.promote(db, job.org_id, mv.id)
         promoted = True
     db.commit()
-    TRAINING_SECONDS.observe(time.monotonic() - started)
     return {
         "model_version_id": str(mv.id),
         "version": mv.version,

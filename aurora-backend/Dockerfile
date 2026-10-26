@@ -33,8 +33,10 @@ ENV ARTIFACT_DIR=/data/artifacts \
 
 EXPOSE 8100
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8100/health/live', timeout=3).status == 200 else 1)"
+  CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT') or os.environ.get('API_PORT','8100'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{p}/health/live', timeout=3).status == 200 else 1)"
 
 # --proxy-headers makes request.client the real client IP (used for rate limits and audit) when the API sits
 # behind a trusted proxy; FORWARDED_ALLOW_IPS must list only that proxy's address.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT} --workers ${WEB_CONCURRENCY:-2} --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS}\""]
+# PROMETHEUS_MULTIPROC_DIR (API only) lets /metrics aggregate all uvicorn workers; it is emptied at each start.
+# $PORT is honoured when a platform (e.g. Railway) assigns one.
+CMD ["sh", "-c", "export PROMETHEUS_MULTIPROC_DIR=/tmp/aurora-metrics && rm -rf \"$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$PROMETHEUS_MULTIPROC_DIR\" && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-${API_PORT}} --workers ${WEB_CONCURRENCY:-2} --proxy-headers --forwarded-allow-ips \"${FORWARDED_ALLOW_IPS}\""]

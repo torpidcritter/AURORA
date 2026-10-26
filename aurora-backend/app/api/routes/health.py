@@ -7,12 +7,12 @@ import time
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST
 from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.core.errors import Unauthorized
-from app.core.metrics import REGISTRY
+from app.core.metrics import render as metrics_render
 from app.core.redis_client import get_redis
 from app.db.session import get_engine
 from app.storage import get_storage
@@ -78,4 +78,4 @@ def metrics(request: Request) -> Response:
         supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
         if not hmac.compare_digest(supplied, token.get_secret_value()):
             raise Unauthorized("metrics token required")
-    return Response(generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
+    return Response(metrics_render(), media_type=CONTENT_TYPE_LATEST)

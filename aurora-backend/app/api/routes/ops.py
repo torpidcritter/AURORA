@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.api.deps import Principal, require
 from app.api.routes.health import check_components
 from app.core.errors import NotFound, ValidationFailed
-from app.core.metrics import QUEUE_DEPTH
 from app.core.redis_client import get_redis
 from app.core.security import Perm
 from app.db.models import Alert, AuditEvent, Job, ModelVersion
@@ -407,7 +406,6 @@ def ops_status(p: Principal = Depends(require(Perm.view_ops)), db: Session = Dep
     for qn in ("default", "training"):
         try:
             n = int(get_redis().llen(qn))
-            QUEUE_DEPTH.labels(qn).set(n)
             queues[qn] = n
         except Exception:  # noqa: BLE001
             queues[qn] = None
