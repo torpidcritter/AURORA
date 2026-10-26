@@ -42,7 +42,10 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
   last-token head 64→32→H). **Deviation:** the product identifier is a learned `nn.Embedding` (index 0 = unknown) concatenated to
   each time step, instead of a standard-scaled numeric ID. An arbitrary SKU integer has no ordinal meaning.
   The 4 continuous channels are per-product standard-scaled sales, day-of-week/6, (month−1)/11 and a weekend flag.
-- **Leakage controls:** each product's series is split chronologically into train | early-stop (14 d) | calibration (35 d).
+- **Leakage controls:** each product's series is split chronologically into train | early-stop | calibration. The
+  held-out segments are sized in forecast windows, not days, so every horizon gets the same number of windows:
+  early-stop H+7 days (8 windows), calibration H+28 days (29 windows), i.e. 14 and 35 days at H=7 and 63 and 84 days at
+  H=56. (Fixed 14/35-day segments left no complete window at H=28 or 56; fixed 2026-10-26, older bundles still load.)
   Scalers are fit on train only. Targets never cross segment boundaries (unit-tested).
 - **Selection:** the Transformer is never assumed superior. Training compares it with SMA, SES, seasonal-naive, Holt-Winters and
   Croston-SBA on the *same* held-out windows. A version passes the promotion gate only if it beats seasonal-naive and is no more
@@ -57,7 +60,8 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
 ## ADR-006 Uncertainty
 - **Prediction intervals:** split-conformal on absolute residuals, per horizon step, with the finite-sample quantile
   `ceil((n+1)(1−α))/n`. If a step has too few residuals, residuals are pooled across steps ≤ h (this only widens intervals).
-  Baselines calibrate on up to 42 dense rolling origins. The Transformer calibrates on its 35-day calibration segment.
+  Baselines calibrate on up to 42 dense rolling origins. The Transformer calibrates on its calibration segment
+  (29 windows: 35 days at H=7).
 - **Coverage is measured, not promised:** each interval reports empirical coverage from calibrating on the first 2/3 of origins
   and testing on the last 1/3. Time-series errors are only approximately exchangeable, so no coverage guarantee is claimed.
 - **MC dropout:** sets the model to eval mode, then re-enables only `nn.Dropout` modules, with 20 samples. PyTorch's fused
@@ -196,3 +200,67 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
   server-side only.
 - Object storage: local disk for one host, S3-compatible otherwise. The bundled MinIO (Compose profile `s3`) is for
   development; CI runs the stack with it so the S3 path is exercised.
+
+## ADR-021 Statistical baselines and libraries
+- Holt-Winters is statsmodels' `ExponentialSmoothing` with an **additive damped** trend and additive weekly seasonality.
+  The spec says "linear trend"; an undamped trend extrapolates indefinitely and over-forecasts at 28-90 day horizons, so the
+  damped form is used. It needs 28 observations and falls back to seasonal-naive below that.
+- scikit-learn, which the spec lists for evaluation, is not a dependency. The metrics (WAPE, MAPE with an explicit zero
+  exclusion rule, RMSE, bias), split-conformal intervals and permutation importance are short NumPy functions with unit
+  tests; pulling in scikit-learn for them would add a large dependency and its CVE surface for no capability.
+- MAPE is undefined for zero actuals (spec section 11). Aurora reports it over non-zero days with the number of excluded
+  days, and uses WAPE for model selection and the promotion gate.
+
+## ADR-022 Model artifacts: one `.pt` bundle, no pickle files
+- The spec stores feature scalers as `.pkl`. Unpickling executes code, so a tampered artifact would be remote code
+  execution in the worker. Aurora stores weights, configuration, per-product scaler statistics (mean, std as plain
+  numbers) and metrics in one bundle written with `torch.save` and read with `torch.load(weights_only=True)`, which refuses
+  arbitrary objects. The registry also records a SHA-256 of each bundle and refuses to load one that does not match.
+
+## ADR-023 Module names
+The spec names files that do not exist here; the responsibilities live in these modules:
+
+| Spec | Aurora |
+|---|---|
+| `statistical_forecast.py` | `app/ml/statistical.py` |
+| `transformer_model.py` | `app/ml/transformer_model.py`, training in `app/ml/training.py` |
+| `uncertainty_engine.py`, `backtesting_service.py` | `app/ml/conformal.py`, `app/ml/backtesting.py` |
+| `shap_service.py` | `app/services/explain_service.py` (permutation importance; not SHAP, see ADR-012) |
+| `ingestion_pipeline.py` | `app/services/ingestion.py`, `app/services/dataset_service.py` |
+| `drift_monitor.py` | `app/ml/drift.py`, `app/services/monitoring_service.py` |
+| `model_registry_service_v2.py` | `app/services/model_registry.py` |
+| `scenario_service.py` | `app/services/scenario_service.py` |
+| `service.py` (assistant) | `app/services/assistant_service.py` |
+| `shopify_routes.py` | `app/api/routes/shopify.py`, `app/services/shopify_service.py` |
+
+## ADR-024 Plain PostgreSQL, no TimescaleDB
+- The spec lists TimescaleDB. The largest table is daily sales per product (`sales_records`), queried by organisation and
+  date range through a composite index. At the scale Aurora targets (thousands of SKUs, a few years of daily rows: low
+  millions of rows) plain PostgreSQL serves those queries in milliseconds, and managed hosts (Railway, most others) do not
+  offer the extension. Revisit with hypertables or declarative partitioning by date if tenants reach hundreds of millions
+  of rows.
+
+## ADR-025 Assistant route
+- The assistant page is `/assistant`; `/chat` (the spec's page name) redirects there. The API endpoint is `POST /chat` as
+  the spec says. A floating panel offers the same assistant on every page.
+
+## ADR-026 Image and dependency scanning
+- CI runs `pip-audit` on the backend requirements and `npm audit --audit-level=high` (all dependencies) on the
+  frontend. Container images are built and run in CI as uid 10001 but not scanned for OS-package CVEs: the common GitHub
+  Action for that (trivy-action) is a third-party action with a history of supply-chain compromise, and the owner asked
+  for none. Scan images in the registry you deploy from (for example GitHub's or the cloud provider's registry scanning),
+  or add a scanner pinned by commit SHA after review.
+
+## ADR-027 Readiness and model artifacts
+- The spec has `/health/ready` check "artifact integrity". Readiness fails (503) only when the database, Redis or storage
+  is down. Active model files are checked for presence (cached five minutes) and reported as `models`, without failing
+  readiness: one organisation's missing file would otherwise take the API out of rotation for every tenant, while
+  forecasts for that organisation fall back to the statistical baselines. The full SHA-256 check runs when a model is
+  loaded (ADR-022).
+
+## ADR-028 Live accuracy
+- Validation metrics are measured once, at training time. Monitoring also scores the forecasts users were actually served
+  against the sales that arrived later: for each product and day, the freshest forecast made before that day; only days
+  up to the product's last uploaded sale. The spec's trigger is MAPE above 25%; because MAPE skips zero-demand days and
+  swings on low-volume products, the metric (MAPE or WAPE) and threshold are configurable. An alert recommends review and
+  retraining; it never retrains or promotes on its own (ADR-010).
