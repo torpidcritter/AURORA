@@ -95,6 +95,34 @@ def test_only_one_active_training_job(client, org, db):
     assert r.status_code == 409
 
 
+def test_catalogue_jobs_are_not_stacked(client, org, other_org, db, monkeypatch):
+    from app.db.models import Job
+    from app.services import job_service
+
+    sent = []
+
+    def fake_send(kind, job_id, countdown=None):  # type: ignore[no-untyped-def]
+        sent.append(kind)
+        return type("Res", (), {"id": f"task-{job_id}"})()
+
+    monkeypatch.setattr(job_service, "send", fake_send)
+    for kind, path in (("batch_forecast", "/jobs/batch-forecast?horizon=14"), ("monitor", "/jobs/monitor")):
+        active = Job(org_id=org.org_id, kind=kind, status="running", params={})
+        db.add(active)
+        db.commit()
+        r = client.post(path, headers=org.h("analyst"))
+        assert r.status_code == 202 and r.json()["id"] == str(active.id)  # the running job, not a new one
+        other = client.post(path, headers=other_org.h("analyst")).json()  # other tenants are unaffected
+        assert other["id"] != str(active.id)
+    assert sent == ["batch_forecast", "monitor"]  # only the other organisation's jobs were queued
+
+
+def test_batch_jobs_use_the_spec_task_name():
+    from app.workers.celery_app import celery_app
+
+    assert "aurora.run_batch_forecast_job" in celery_app.tasks
+
+
 def test_duplicate_delivery_does_not_rerun(db, org):
     from app.db.models import Job
     from app.workers.tasks import run_job
@@ -315,3 +343,19 @@ def test_model_age_is_measured_from_the_checkpoint_not_the_promotion(db, org):
     monitoring_service.run_for_org(db, org.org_id)
     stale = db.scalars(select(Alert).where(Alert.org_id == org.org_id, Alert.kind == "model_stale")).all()
     assert len(stale) == 1 and stale[0].details["age_days"] == 60
+
+
+def test_job_runs_with_the_request_id_that_started_it(client, org, monkeypatch):
+    from app.core.logging import request_id_var
+    from app.workers import tasks
+
+    seen = []
+
+    def fake_batch(db, job):  # type: ignore[no-untyped-def]
+        seen.append(request_id_var.get())
+        return {"forecasts": 0, "failed": [], "horizon": 14}
+
+    monkeypatch.setattr(tasks, "_batch_forecast", fake_batch)
+    r = client.post("/jobs/batch-forecast?horizon=14", headers=org.h("analyst") | {"X-Request-ID": "req-batch-1"})
+    assert r.status_code == 202 and r.headers["X-Request-ID"] == "req-batch-1"
+    assert seen == ["req-batch-1"]

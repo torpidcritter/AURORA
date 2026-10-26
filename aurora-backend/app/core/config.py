@@ -60,7 +60,8 @@ class Settings(BaseSettings):
     login_rate_limit_per_minute: int = 10
     login_lockout_threshold: int = 8
     login_lockout_minutes: int = 15
-    api_rate_limit_per_minute: int = 600
+    api_rate_limit_per_minute: int = 600  # per user, every authenticated endpoint
+    upload_rate_limit_per_minute: int = 10  # per user, dataset / inventory / signal file uploads combined
 
     # Uploads
     max_upload_bytes: int = 20 * 1024 * 1024
@@ -93,7 +94,12 @@ class Settings(BaseSettings):
     drift_ks_threshold: float = 0.15
     drift_mean_change_threshold: float = 0.25
     model_max_age_days: int = 30
-    accuracy_wape_threshold: float = 25.0
+    accuracy_wape_threshold: float = 25.0  # validation WAPE of a newly trained model
+    # Live accuracy (served forecasts vs later sales). Spec 5.2 uses MAPE > 25%; MAPE skips zero-demand days and is
+    # volatile for low-volume products, so WAPE can be chosen instead.
+    accuracy_live_metric: Literal["mape", "wape"] = "mape"
+    accuracy_live_threshold: float = 25.0
+    accuracy_live_window_days: int = 28
     audit_retention_days: int = 365
     job_stale_after_minutes: int = 120
 

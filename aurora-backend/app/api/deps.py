@@ -13,6 +13,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import Forbidden, Unauthorized
 from app.core.security import Perm, decode_access_token, has_perm
@@ -70,6 +71,9 @@ def get_principal(
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.token_version != claims["tv"] or str(user.org_id) != claims["org"]:
         raise Unauthorized("Session is no longer valid")
+    # Per-user ceiling on all authenticated traffic (shared across API instances via Redis; fails open if Redis is
+    # down). Expensive endpoints have tighter limits of their own.
+    rate_limit.hit(f"api:{user.id}", get_settings().api_rate_limit_per_minute, 60)
     return Principal(user_id=user.id, org_id=user.org_id, role=user.role, email=user.email, ip=client_ip(request))
 
 

@@ -104,8 +104,9 @@ def batch_forecast(
 
 @router.post("/jobs/monitor", status_code=202)
 def run_monitor(p: Principal = Depends(require(Perm.train_models)), db: Session = Depends(get_db)) -> dict:
-    job, _ = job_service.create(db, org_id=p.org_id, kind="monitor", params={}, user_id=p.user_id)
-    job_service.enqueue(db, job)
+    job, created = job_service.create(db, org_id=p.org_id, kind="monitor", params={}, user_id=p.user_id)
+    if created:
+        job_service.enqueue(db, job)
     db.refresh(job)
     return job_out(job)
 

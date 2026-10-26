@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, require
+from app.core import rate_limit
 from app.core.config import get_settings
 from app.core.errors import NotFound, ValidationFailed
 from app.core.security import Perm
@@ -23,7 +24,9 @@ from app.services import audit, dataset_service, product_service, series
 router = APIRouter(tags=["data"])
 
 
-async def _read_limited(file: UploadFile) -> bytes:
+async def _read_limited(file: UploadFile, p: Principal) -> bytes:
+    """Read an uploaded file within the size limit, after the per-user upload rate limit."""
+    rate_limit.hit(f"upload:{p.user_id}", get_settings().upload_rate_limit_per_minute, 60)
     limit = get_settings().max_upload_bytes
     data = await file.read(limit + 1)
     if len(data) > limit:
@@ -44,7 +47,7 @@ def _parse_tags(tags: str | None) -> dict[str, str]:
 
 
 async def _upload(file: UploadFile, tags: str | None, missing_policy: str, p: Principal, db: Session) -> UploadResponse:
-    data = await _read_limited(file)
+    data = await _read_limited(file, p)
     outcome = dataset_service.ingest_upload(
         db,
         org_id=p.org_id,
@@ -185,7 +188,7 @@ async def upload_inventory(
     p: Principal = Depends(require(Perm.manage_inventory)),
     db: Session = Depends(get_db),
 ) -> dict:
-    data = await _read_limited(file)
+    data = await _read_limited(file, p)
     result = product_service.import_inventory_snapshot(db, p.org_id, data)
     audit.record_for(
         db,

@@ -153,12 +153,18 @@ HANDLERS = {"train": _train, "batch_forecast": _batch_forecast, "monitor": _moni
 
 
 @celery_app.task(name="aurora.run_training_job", acks_late=True)
-def run_training_job(job_id: str) -> str:
+def run_training_job(job_id: str, request_id: str | None = None) -> str:
     return _run(job_id, _train)
 
 
+@celery_app.task(name="aurora.run_batch_forecast_job", acks_late=True)
+def run_batch_forecast_job(job_id: str, request_id: str | None = None) -> str:
+    """Forecast every product in the organisation's catalogue (spec 6.1)."""
+    return _run(job_id, _batch_forecast)
+
+
 @celery_app.task(name="aurora.run_job", acks_late=True)
-def run_job(job_id: str) -> str:
+def run_job(job_id: str, request_id: str | None = None) -> str:
     db = get_sessionmaker()()
     try:
         from app.db.models import Job

@@ -61,8 +61,9 @@ passed to the backend containers; empty values mean the application default. See
 `S3_ENDPOINT_URL=http://minio:9000`, `S3_ACCESS_KEY` and `S3_SECRET_KEY` (8+ characters). MinIO then uses those as its
 root credentials, which is acceptable for a development box only. In production use a managed S3 bucket and a key
 limited to that bucket. Switching backends does not copy existing files: existing models must be retrained or copied.
-The MinIO image is pinned to `RELEASE.2025-04-22T22-12-26Z`; MinIO stopped publishing community images after 2025, so
-check for a maintained build before relying on it.
+MinIO no longer publishes community images (`minio/minio` is gone from Docker Hub), so the profile uses
+`bitnamilegacy/minio:2025.7.23-debian-12-r5`, Bitnami's last build, which receives no security fixes. It is fine for a
+development box; for anything shared use managed S3 or a maintained S3-compatible server.
 
 ## 3. Reverse proxy, TLS and client addresses
 

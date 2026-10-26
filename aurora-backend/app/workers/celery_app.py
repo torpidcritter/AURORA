@@ -6,11 +6,12 @@ celery -A app.workers.celery_app beat
 
 from __future__ import annotations
 
-from celery import Celery
+from celery import Celery, signals
 from celery.schedules import crontab
 from kombu import Queue
 
 from app.core.config import get_settings
+from app.core.logging import configure_logging, request_id_var, task_var
 
 s = get_settings()
 celery_app = Celery("aurora", broker=s.broker_url, backend=s.result_backend, include=["app.workers.tasks"])
@@ -22,7 +23,11 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_default_queue="default",
     task_queues=(Queue("default"), Queue("training")),
-    task_routes={"aurora.run_job": {"queue": "default"}, "aurora.run_training_job": {"queue": "training"}},
+    task_routes={
+        "aurora.run_job": {"queue": "default"},
+        "aurora.run_batch_forecast_job": {"queue": "default"},
+        "aurora.run_training_job": {"queue": "training"},
+    },
     task_soft_time_limit=s.training_time_limit_s + 60,
     task_time_limit=s.training_time_limit_s + 180,
     broker_transport_options={"visibility_timeout": s.training_time_limit_s + 600},
@@ -39,3 +44,30 @@ celery_app.conf.update(
         "nightly-batch-forecast": {"task": "aurora.batch_forecast_all", "schedule": crontab(hour=2, minute=0)},
     },
 )
+
+
+@signals.setup_logging.connect
+def _logging(**_: object) -> None:
+    """Workers and Beat log the same JSON lines as the API instead of Celery's own format."""
+    configure_logging(s.log_level, s.log_json)
+
+
+_task_tokens: dict[str, tuple] = {}
+
+
+@signals.task_prerun.connect
+def _task_started(task_id: str | None = None, task: object = None, kwargs: dict | None = None, **_: object) -> None:
+    # Job tasks carry the id of the API request that started them, so their logs and audit entries correlate.
+    # Tokens restore the previous values afterwards, which matters when a task runs inline (eager mode).
+    _task_tokens[task_id or ""] = (
+        task_var.set((task_id or "", getattr(task, "name", ""))),
+        request_id_var.set((kwargs or {}).get("request_id") or request_id_var.get()),
+    )
+
+
+@signals.task_postrun.connect
+def _task_finished(task_id: str | None = None, **_: object) -> None:
+    tokens = _task_tokens.pop(task_id or "", None)
+    if tokens is not None:
+        task_var.reset(tokens[0])
+        request_id_var.reset(tokens[1])

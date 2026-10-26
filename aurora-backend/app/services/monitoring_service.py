@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.models import Product
 from app.ml import drift
-from app.services import alert_service, inventory_service, model_registry, series
+from app.services import accuracy_service, alert_service, inventory_service, model_registry, series
 
 
 def run_for_org(db: Session, org_id: uuid.UUID) -> dict:
@@ -107,6 +107,27 @@ def run_for_org(db: Session, org_id: uuid.UUID) -> dict:
                 details={"wape": wape},
             )
             out["model_alerts"] += 1
+    live = accuracy_service.live_accuracy(db, org_id, s.accuracy_live_window_days)
+    out["live_accuracy"] = {k: live[k] for k in ("points", "wape", "mape", "sufficient")}
+    value = live.get(s.accuracy_live_metric)
+    if live["sufficient"] and value is not None and value > s.accuracy_live_threshold:
+        model_keys.add("model:live_accuracy")
+        name = s.accuracy_live_metric.upper()
+        worst = [r["sku"] for r in live["by_product"][:3] if r.get("sku")]
+        alert_service.upsert(
+            db,
+            org_id=org_id,
+            kind="model_accuracy",
+            severity="medium",
+            dedup_key="model:live_accuracy",
+            title=f"Live forecast {name} {value:.1f}% exceeds {s.accuracy_live_threshold:g}%",
+            message=f"Over the last {live['window_days']} days ({live['points']} product-days), served forecasts "
+            f"missed actual demand by more than the target. Least accurate: {', '.join(worst) or 'n/a'}. Review recent "
+            "data and consider retraining; a new model is promoted only if it passes the validation gate.",
+            details={k: live[k] for k in ("window_start", "window_end", "points", "wape", "mape", "by_method")}
+            | {"metric": s.accuracy_live_metric, "threshold": s.accuracy_live_threshold, "worst_products": worst},
+        )
+        out["model_alerts"] += 1
     out["resolved"] += alert_service.resolve_where_cleared(db, org_id, "model:", model_keys)
     db.commit()
     return out

@@ -9,6 +9,11 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 
 request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
+# Set by the Celery signals in app.workers.celery_app while a task runs.
+task_var: ContextVar[tuple[str, str] | None] = ContextVar("celery_task", default=None)
+
+# Attributes every LogRecord has; anything else on a record came from `extra=` and is logged as a field.
+_STANDARD_ATTRS = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime", "taskName"}
 
 _REDACT_KEYS = {"password", "token", "secret", "authorization", "api_key", "refresh_token", "access_token"}
 
@@ -35,6 +40,12 @@ class JsonFormatter(logging.Formatter):
         rid = request_id_var.get()
         if rid:
             payload["request_id"] = rid
+        task = task_var.get()
+        if task:
+            payload["task_id"], payload["task_name"] = task
+        plain = {k: v for k, v in record.__dict__.items() if k not in _STANDARD_ATTRS and k != "extra_fields"}
+        if plain:  # logger.info("...", extra={"job_id": ...})
+            payload.update(redact(plain))  # type: ignore[arg-type]
         extra = getattr(record, "extra_fields", None)
         if isinstance(extra, dict):
             payload.update(redact(extra))  # type: ignore[arg-type]

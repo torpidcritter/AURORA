@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound, Unavailable
+from app.core.logging import request_id_var
 from app.db.models import Job
 
 logger = logging.getLogger("aurora.jobs")
 MAX_ATTEMPTS = 3
+SINGLE_ACTIVE = ("batch_forecast", "monitor")
 
 
 def now() -> datetime:
@@ -38,6 +40,17 @@ def create(
             if existing.kind != kind or existing.params != params:
                 raise Conflict("Idempotency-Key was already used for a different request")
             return existing, False
+    if kind in SINGLE_ACTIVE:
+        # Backpressure: these jobs cover the whole catalogue, so a second copy would only repeat the work. The active
+        # job is returned instead (beat ticks and repeated clicks while one is still running).
+        active = db.scalar(
+            select(Job)
+            .where(Job.org_id == org_id, Job.kind == kind, Job.status.in_(("queued", "running")))
+            .order_by(Job.created_at)
+            .limit(1)
+        )
+        if active is not None:
+            return active, False
     if kind == "train":
         running = db.scalar(
             select(Job.id).where(Job.org_id == org_id, Job.kind == "train", Job.status.in_(("queued", "running")))
@@ -86,8 +99,14 @@ def send(kind: str, job_id: uuid.UUID | str, countdown: float | None = None):  #
     """Publish the task for a job (runs inline when CELERY_TASK_ALWAYS_EAGER is set, e.g. in tests)."""
     from app.workers import tasks
 
-    task = tasks.run_training_job if kind == "train" else tasks.run_job
-    return task.apply_async(args=[str(job_id)], countdown=countdown, queue="training" if kind == "train" else "default")
+    task = {"train": tasks.run_training_job, "batch_forecast": tasks.run_batch_forecast_job}.get(kind, tasks.run_job)
+    rid = request_id_var.get()
+    return task.apply_async(
+        args=[str(job_id)],
+        kwargs={"request_id": rid} if rid else {},
+        countdown=countdown,
+        queue="training" if kind == "train" else "default",
+    )
 
 
 def claim(db: Session, job_id: uuid.UUID) -> Job | None:

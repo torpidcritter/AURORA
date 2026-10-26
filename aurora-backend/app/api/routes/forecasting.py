@@ -21,6 +21,7 @@ from app.ml import backtesting, drift
 from app.ml.statistical import METHOD_INFO
 from app.schemas.forecast import BacktestIn, ForecastIn, InventoryIn, RiskBatchIn, ScenarioIn, SignalIn
 from app.services import (
+    accuracy_service,
     audit,
     explain_service,
     forecast_service,
@@ -275,6 +276,18 @@ def drift_all(p: Principal = Depends(require(Perm.read)), db: Session = Depends(
     return {"items": out, "drifting": sum(1 for r in out if r["drift"])}
 
 
+@router.get("/intelligence/accuracy")
+def live_accuracy(
+    window_days: int = Query(28, ge=7, le=180),
+    p: Principal = Depends(require(Perm.read)),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Served forecasts scored against the sales that arrived afterwards (see accuracy_service)."""
+    s = get_settings()
+    out = accuracy_service.live_accuracy(db, p.org_id, window_days)
+    return out | {"alert_metric": s.accuracy_live_metric, "alert_threshold": s.accuracy_live_threshold}
+
+
 @router.get("/simulate/types")
 def scenario_types(p: Principal = Depends(require(Perm.read))) -> dict:
     return {"types": scenario_service.SCENARIO_TYPES}
@@ -329,7 +342,7 @@ def create_signal(
 async def upload_signals(
     file: UploadFile = File(...), p: Principal = Depends(require(Perm.manage_signals)), db: Session = Depends(get_db)
 ) -> dict:
-    res = signal_service.import_csv(db, p.org_id, p.user_id, await _read_limited(file))
+    res = signal_service.import_csv(db, p.org_id, p.user_id, await _read_limited(file, p))
     audit.record_for(db, p, "signal.upload", resource_type="signal", details={"created": res["created"]})
     db.commit()
     return res

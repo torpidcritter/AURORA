@@ -2,7 +2,7 @@ def test_live_ready_health_metrics(client):
     assert client.get("/health/live").json() == {"status": "alive"}
     r = client.get("/health/ready")
     assert r.status_code == 200, r.text
-    assert r.json()["components"] == {"database": True, "redis": True, "storage": True}
+    assert r.json()["components"] == {"database": True, "redis": True, "storage": True, "models": True}
     assert client.get("/health").json()["status"] == "ok"
     m = client.get("/metrics")
     assert m.status_code == 200
@@ -82,3 +82,40 @@ def test_state_metrics_come_from_the_database(client, org, db):
     assert samples[("aurora_training_duration_seconds_bucket", (("le", "120"),))] == 1
     assert samples[("aurora_training_duration_seconds_count", ())] == 1
     assert ("aurora_queue_depth", (("queue", "default"),)) in samples
+
+
+def test_missing_model_file_is_reported_but_does_not_block_readiness(client, org, db):
+    from app.api.routes import health
+    from app.db.models import ModelVersion
+    from app.storage import get_storage
+
+    get_storage().put("models/present.pt", b"weights")
+    for i, key in enumerate(("models/present.pt", "models/gone.pt")):
+        db.add(
+            ModelVersion(
+                org_id=org.org_id if i == 0 else _other_org(db),
+                version=f"v1.0.{i}",
+                status="active",
+                artifact_key=key,
+                checksum="0" * 64,
+                config={},
+                metrics={},
+                training_meta={},
+            )
+        )
+    db.commit()
+    health._model_check["at"] = None  # drop the cached result
+    r = client.get("/health/ready")
+    assert r.status_code == 200 and r.json()["components"]["models"] is False
+    assert health.check_models() == {"ok": False, "active": 2, "missing": 1}
+    assert client.get("/health").json()["status"] == "degraded"
+    health._model_check["at"] = None
+
+
+def _other_org(db):  # type: ignore[no-untyped-def]
+    from app.db.models import Organization
+
+    o = Organization(name="Other")
+    db.add(o)
+    db.flush()
+    return o.id

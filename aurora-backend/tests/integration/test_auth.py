@@ -209,3 +209,23 @@ def test_rate_limit_is_per_reported_client(client, org, monkeypatch):
     assert codes[0] == 401 and codes[-1] == 429
     # Another user behind the same BFF is not blocked by the first client's attempts.
     assert status("198.51.100.4", "someone@example.com") == 401
+
+
+def test_per_user_api_ceiling(client, org, other_org, monkeypatch):
+    monkeypatch.setattr(get_settings(), "api_rate_limit_per_minute", 5)
+    codes = [client.get("/auth/me", headers=org.h("viewer")).status_code for _ in range(8)]
+    assert codes[:5] == [200] * 5 and codes[-1] == 429
+    assert client.get("/auth/me", headers=org.h("analyst")).status_code == 200  # another user is unaffected
+
+
+def test_uploads_are_rate_limited_per_user(client, org, monkeypatch):
+    monkeypatch.setattr(get_settings(), "upload_rate_limit_per_minute", 2)
+    csv = b"date,sku,quantity\n2026-01-01,A,1\n"
+
+    def up() -> int:
+        files = {"file": ("s.csv", csv, "text/csv")}
+        return client.post("/upload-dataset", files=files, headers=org.h("operator")).status_code
+
+    assert [up(), up()] == [201, 201]
+    r = client.post("/inventory/upload", files={"file": ("i.csv", b"sku,on_hand\nA,1\n")}, headers=org.h("operator"))
+    assert r.status_code == 429 and r.json()["error"]["details"]["retry_after"] > 0
