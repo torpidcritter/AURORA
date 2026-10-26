@@ -311,6 +311,30 @@ export interface DriftRow {
   mean_change_ratio?: number | null;
   reasons?: string[];
   reason?: string;
+  recent_n?: number;
+  baseline_n?: number;
+  thresholds?: { ks: number; mean_change: number };
+}
+
+/** One score from GET /intelligence/accuracy. WAPE and MAPE are percentages (0-100); MAPE skips zero-demand days. */
+export interface AccuracyScore {
+  points: number;
+  wape: number | null;
+  mape: number | null;
+  mape_excluded_zero_days: number;
+}
+
+/** Served forecasts scored against the sales that arrived afterwards (aurora-backend/app/services/accuracy_service.py). */
+export interface LiveAccuracy extends AccuracyScore {
+  window_days: number;
+  window_start: string | null;
+  window_end: string | null;
+  sufficient: boolean;
+  min_points: number;
+  by_method: Record<string, AccuracyScore>;
+  by_product: (AccuracyScore & { product_id: string; sku: string | null })[];
+  alert_metric: "mape" | "wape";
+  alert_threshold: number;
 }
 
 export interface Alert {

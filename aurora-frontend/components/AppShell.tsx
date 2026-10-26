@@ -27,6 +27,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import useSWR from "swr";
 
+import { ChatProvider } from "@/components/chat";
+import { ChatPanel, isChatPanelHidden } from "@/components/ChatPanel";
 import { fetcher } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
@@ -136,49 +138,53 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1 focus:text-slate-950">
-        Skip to content
-      </a>
-      <aside className="sticky top-0 hidden h-screen overflow-y-auto border-r border-line bg-surface/60 lg:block">
-        <Brand />
-        {nav}
-      </aside>
-      {open && (
-        <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-72 overflow-y-auto border-r border-line bg-surface">
-            <div className="flex items-center justify-between pr-3">
-              <Brand />
-              <button type="button" onClick={() => setOpen(false)} className="rounded p-2 text-muted hover:text-ink" aria-label="Close navigation">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {nav}
-          </aside>
+    <ChatProvider>
+      <div className="min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1 focus:text-slate-950">
+          Skip to content
+        </a>
+        <aside className="glass sticky top-0 hidden h-screen overflow-y-auto border-r border-glass-line lg:block">
+          <Brand />
+          {nav}
+        </aside>
+        {open && (
+          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
+            <aside className="glass-strong absolute inset-y-0 left-0 w-72 overflow-y-auto border-r border-line">
+              <div className="flex items-center justify-between pr-3">
+                <Brand />
+                <button type="button" onClick={() => setOpen(false)} className="rounded p-2 text-muted hover:text-ink" aria-label="Close navigation">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              {nav}
+            </aside>
+          </div>
+        )}
+        <div className="min-w-0">
+          <header className="glass-strong sticky top-0 z-30 flex items-center gap-3 border-b border-glass-line px-4 py-2.5 sm:px-6">
+            <button type="button" className="rounded p-1.5 text-muted hover:text-ink lg:hidden" onClick={() => setOpen(true)} aria-label="Open navigation">
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0 flex-1 truncate text-sm text-muted">{me?.org_name}</div>
+            {me && (
+              <div className="flex items-center gap-3 text-sm">
+                <span className="hidden text-muted sm:inline">{me.email}</span>
+                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs capitalize text-ink ring-1 ring-line">{me.role}</span>
+                <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-muted hover:bg-surface-2 hover:text-ink">
+                  <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Sign out</span>
+                </button>
+              </div>
+            )}
+          </header>
+          {/* Extra bottom padding keeps the assistant launcher from covering the end of the page. */}
+          <main id="main" className={clsx("mx-auto w-full max-w-[1400px] px-4 pt-6 sm:px-6", isChatPanelHidden(pathname) ? "pb-6" : "pb-24")}>
+            {children}
+          </main>
         </div>
-      )}
-      <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-bg/85 px-4 py-2.5 backdrop-blur sm:px-6">
-          <button type="button" className="rounded p-1.5 text-muted hover:text-ink lg:hidden" onClick={() => setOpen(true)} aria-label="Open navigation">
-            <Menu className="h-5 w-5" />
-          </button>
-          <div className="min-w-0 flex-1 truncate text-sm text-muted">{me?.org_name}</div>
-          {me && (
-            <div className="flex items-center gap-3 text-sm">
-              <span className="hidden text-muted sm:inline">{me.email}</span>
-              <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs capitalize text-ink ring-1 ring-line">{me.role}</span>
-              <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-muted hover:bg-surface-2 hover:text-ink">
-                <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Sign out</span>
-              </button>
-            </div>
-          )}
-        </header>
-        <main id="main" className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6">
-          {children}
-        </main>
+        <ChatPanel />
       </div>
-    </div>
+    </ChatProvider>
   );
 }
 

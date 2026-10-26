@@ -39,9 +39,13 @@ export function Button({
   );
 }
 
+/** Shared glass surface (spec 9.2): translucent fill, 16px backdrop blur, hairline border and a faint glow. Solid when
+ *  backdrop-filter is unsupported or the user prefers reduced transparency (see `glass` in app/globals.css). */
+export const SURFACE = "glass rounded-xl border border-glass-line shadow-glass";
+
 export function Card({ title, actions, children, className, subtitle }: { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <section className={clsx("rounded-xl border border-line bg-surface/80 p-4 sm:p-5", className)}>
+    <section className={clsx(SURFACE, "p-4 sm:p-5", className)}>
       {(title || actions) && (
         <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -70,7 +74,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
 
 export function Stat({ label, value, hint, tone = "default", title }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "default" | "ok" | "warn" | "bad" | "ai"; title?: string }) {
   return (
-    <div className="rounded-xl border border-line bg-surface/80 p-4" title={title}>
+    <div className={clsx(SURFACE, "p-4")} title={title}>
       <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
       <div
         className={clsx(
@@ -108,7 +112,7 @@ export function Badge({ children, tone = "default" }: { children: ReactNode; ton
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
+        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
         tone === "default" && "bg-slate-500/15 text-slate-300 ring-slate-400/25",
         tone === "ok" && "bg-ok/15 text-ok ring-ok/30",
         tone === "warn" && "bg-warn/15 text-warn ring-warn/30",
@@ -319,7 +323,7 @@ export function ConfirmButton({
         ref={ref}
         aria-labelledby={`${id}-t`}
         onClose={() => setOpen(false)}
-        className="m-auto w-[min(92vw,420px)] rounded-xl border border-line bg-surface p-5 text-ink backdrop:bg-black/60"
+        className="glass-strong m-auto w-[min(92vw,420px)] rounded-xl border border-line p-5 text-ink shadow-2xl backdrop:bg-black/60"
       >
         {open && (
           <>

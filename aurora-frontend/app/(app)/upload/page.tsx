@@ -1,15 +1,20 @@
 "use client";
 
+import clsx from "clsx";
+import { Check, Lock } from "lucide-react";
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
 
+import { JobProgress, TERMINAL } from "@/components/JobProgress";
+import { TrainForm, useTrainingJob } from "@/components/TrainForm";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 import { fmtBytes, fmtDateTime, fmtInt } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { Dataset, Page } from "@/lib/types";
 import { MAX_UPLOAD_MB as MAX_MB, validateFile } from "@/lib/validation";
+import { trainGate, wizardSteps, type StepState, type TrainGate, type WizardStep } from "@/lib/wizard";
 
 const ACCEPT = ".csv,.tsv,.txt,.xlsx,.json";
 
@@ -94,8 +99,74 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
+const STEP_STATE_TEXT: Record<StepState, string> = {
+  done: "completed",
+  current: "current step",
+  upcoming: "not started",
+  unavailable: "not available for your role",
+};
+
+function WizardProgress({ steps }: { steps: WizardStep[] }) {
+  return (
+    <nav aria-label="Upload wizard" className="mb-6">
+      <ol className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-0">
+        {steps.map((s, i) => (
+          <li key={s.key} aria-current={s.state === "current" ? "step" : undefined} className="flex items-center gap-2 sm:flex-1">
+            <span
+              className={clsx(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ring-1 ring-inset",
+                s.state === "done" && "bg-ok/15 text-ok ring-ok/40",
+                s.state === "current" && "bg-primary/15 text-primary ring-primary/50",
+                s.state === "upcoming" && "text-muted ring-line",
+                s.state === "unavailable" && "text-warn ring-warn/40",
+              )}
+              aria-hidden
+            >
+              {s.state === "done" ? <Check className="h-4 w-4" /> : s.state === "unavailable" ? <Lock className="h-3.5 w-3.5" /> : i + 1}
+            </span>
+            <span className={clsx("text-sm", s.state === "current" ? "font-medium text-ink" : "text-muted")}>
+              {s.label}
+              <span className="sr-only"> ({STEP_STATE_TEXT[s.state]})</span>
+              {s.state === "unavailable" && <span className="ml-1 text-xs text-warn" aria-hidden>· not for your role</span>}
+            </span>
+            {i < steps.length - 1 && <span className="mx-3 hidden h-px flex-1 bg-line sm:block" aria-hidden />}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+/** Step 3: start a training job and follow it. Shown only when the gate is ready; otherwise explains why not. */
+function TrainStep({ gate, training, onStarted }: { gate: TrainGate; training: ReturnType<typeof useTrainingJob>; onStarted: (jobId: string) => void }) {
+  const { job, refreshRecent } = training;
+  const running = !!job.data && !TERMINAL.has(job.data.status);
+
+  if (gate.status !== "ready") {
+    return <Notice tone={gate.status === "forbidden" ? "warn" : "info"}>{gate.reason}</Notice>;
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted">
+        Trains the Transformer on all of your organisation&apos;s sales history in the background and compares it with the statistical baselines.
+      </p>
+      <TrainForm onStarted={(j) => onStarted(j.id)} running={running} onError={() => void refreshRecent()} />
+      {job.data && <JobProgress job={job.data} canCancel onChanged={() => job.mutate()} />}
+      {job.data?.status === "succeeded" && (
+        <Notice tone="ok">
+          Training finished. Compare the new version with the baselines in{" "}
+          <Link className="underline underline-offset-2" href="/models">
+            Models &amp; drift
+          </Link>
+          .
+        </Notice>
+      )}
+    </div>
+  );
+}
+
 export default function UploadPage() {
-  const { can } = useSession();
+  const { can, me } = useSession();
   const canTag = can("tag_datasets");
   const [offset, setOffset] = useState(0);
   const list = useSWR<Page<Dataset>>(`/datasets?limit=10&offset=${offset}`);
@@ -107,6 +178,9 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ dataset: Dataset; duplicate: boolean } | null>(null);
   const [selected, setSelected] = useState<Dataset | null>(null);
+  const [reviewedId, setReviewedId] = useState<string | null>(null);
+  const reviewRef = useRef<HTMLHeadingElement>(null);
+  const trainRef = useRef<HTMLHeadingElement>(null);
 
   const [invFile, setInvFile] = useState<File | null>(null);
   const [invBusy, setInvBusy] = useState(false);
@@ -134,6 +208,7 @@ export default function UploadPage() {
       });
       setResult(r);
       setSelected(r.dataset);
+      reviewRef.current?.focus();
       await list.mutate();
     } catch (err) {
       setError(errorMessage(err));
@@ -161,13 +236,19 @@ export default function UploadPage() {
   }
 
   const canUpload = can("upload_data");
+  const wizard = { canTrain: can("train_models"), role: me?.role, dataset: selected, reviewed: !!selected && reviewedId === selected.id };
+  const gate = trainGate(wizard);
+  const [trainJobId, setTrainJobId] = useState<string | null>(null);
+  const training = useTrainingJob(trainJobId, gate.status === "ready");
+  const steps = wizardSteps({ ...wizard, trainingFinished: training.job.data?.status === "succeeded" });
 
   return (
     <>
-      <PageHeader title="Upload data" description="Upload historical sales, review validation results, then train or forecast." />
+      <PageHeader title="Upload data" description="Upload historical sales, review the validation results, then train a model." />
+      <WizardProgress steps={steps} />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,420px)_1fr]">
         <div className="space-y-6">
-          <Card title="1. Sales history" subtitle="CSV, Excel or JSON with a date, a product/SKU and a quantity column.">
+          <Card title="1. Upload sales history" subtitle="CSV, Excel or JSON with a date, a product/SKU and a quantity column.">
             {!canUpload ? (
               <Notice tone="info">Your role can view datasets but not upload them.</Notice>
             ) : (
@@ -193,7 +274,7 @@ export default function UploadPage() {
               </form>
             )}
           </Card>
-          <Card title="2. Inventory on hand" subtitle="CSV with sku and on_hand (optional: on_order, lead_time_days, unit_cost). Needed for reorder recommendations.">
+          <Card title="Inventory on hand" subtitle="Optional. CSV with sku and on_hand (optional: on_order, lead_time_days, unit_cost). Needed for reorder recommendations.">
             {!can("manage_inventory") ? (
               <Notice tone="info">Your role cannot change inventory.</Notice>
             ) : (
@@ -209,13 +290,13 @@ export default function UploadPage() {
               </form>
             )}
           </Card>
-          <Card title="3. Next steps">
+          <Card title="Next steps">
             <ul className="list-inside list-disc space-y-1 text-sm text-muted">
               <li>
-                Review products in <Link className="text-primary hover:underline" href="/products">Products</Link>.
+                Review products and their model health in <Link className="text-primary hover:underline" href="/products">Products</Link>.
               </li>
               <li>
-                Train the Transformer in <Link className="text-primary hover:underline" href="/models">Models</Link> (analysts). Statistical forecasts work without training.
+                Statistical forecasts work without training; see them in <Link className="text-primary hover:underline" href="/forecasts">Forecasts</Link>.
               </li>
               <li>
                 See reorder suggestions in <Link className="text-primary hover:underline" href="/inventory">Recommendations</Link>.
@@ -226,11 +307,47 @@ export default function UploadPage() {
 
         <div className="space-y-6">
           {result?.duplicate && <Notice tone="info">This exact file was uploaded before, so nothing was re-imported. Its original report is shown.</Notice>}
-          {selected && (
-            <Card title={`Quality report: ${selected.filename}`} subtitle={fmtDateTime(selected.created_at)}>
-              <QualityReport ds={selected} />
-            </Card>
-          )}
+          <Card
+            title={
+              <span ref={reviewRef} tabIndex={-1} className="focus:outline-none">
+                2. Review data quality{selected ? `: ${selected.filename}` : ""}
+              </span>
+            }
+            subtitle={selected ? fmtDateTime(selected.created_at) : undefined}
+          >
+            {!selected ? (
+              <EmptyState title="Nothing to review yet">Upload a file in step 1, or open a report from the upload history.</EmptyState>
+            ) : (
+              <div className="space-y-4">
+                <QualityReport ds={selected} />
+                {selected.status === "imported" &&
+                  (reviewedId === selected.id ? (
+                    <Notice tone="ok">Quality reviewed. Continue with step 3.</Notice>
+                  ) : (
+                    <Button
+                      variant="primary"
+                      onClick={() => {
+                        setReviewedId(selected.id);
+                        // Wait for step 3 to render its form before moving focus there.
+                        requestAnimationFrame(() => trainRef.current?.focus());
+                      }}
+                    >
+                      Continue to training
+                    </Button>
+                  ))}
+              </div>
+            )}
+          </Card>
+          <Card
+            title={
+              <span ref={trainRef} tabIndex={-1} className="focus:outline-none">
+                3. Train a forecasting model
+              </span>
+            }
+            subtitle="Optional. A new version is used only if it passes the quality gate against the statistical baselines."
+          >
+            <TrainStep gate={gate} training={training} onStarted={setTrainJobId} />
+          </Card>
           <Card title="Upload history">
             {list.error ? (
               <ErrorState error={list.error} onRetry={() => list.mutate()} />
@@ -265,8 +382,14 @@ export default function UploadPage() {
                         <Td className="tabular text-right">{fmtInt(d.accepted_rows)}</Td>
                         <Td className="tabular text-right">{d.quality_score.toFixed(1)}</Td>
                         <Td className="text-right">
-                          <Button variant="ghost" onClick={() => setSelected(d)}>
-                            Report
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              setSelected(d);
+                              reviewRef.current?.focus();
+                            }}
+                          >
+                            Report<span className="sr-only"> for {d.filename}</span>
                           </Button>
                         </Td>
                       </tr>

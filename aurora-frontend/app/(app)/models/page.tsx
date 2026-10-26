@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 
 import { ImportanceChart, LossChart } from "@/components/charts";
-import { JobProgress, TERMINAL, useJob } from "@/components/JobProgress";
-import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, Field, Input, LoadingBlock, Notice, PageHeader, Select, Table, Td, Th } from "@/components/ui";
+import { JobProgress, TERMINAL } from "@/components/JobProgress";
+import { LiveAccuracyCard } from "@/components/LiveAccuracyCard";
+import { TrainForm, useTrainingJob } from "@/components/TrainForm";
+import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, LoadingBlock, Notice, PageHeader, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmt2, fmtDateTime, fmtPct, fmtPctPoints, methodLabel } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import type { Diagnostics, DriftRow, Job, MethodMetrics, ModelVersion, Page } from "@/lib/types";
+import type { Diagnostics, DriftRow, MethodMetrics, ModelVersion } from "@/lib/types";
 
 const statusTone = (s: ModelVersion["status"]) => (s === "active" ? "ok" : s === "rejected" ? "bad" : s === "candidate" ? "info" : "default");
 
@@ -17,21 +19,13 @@ export default function ModelsPage() {
   const { can } = useSession();
   const registry = useSWR<{ items: ModelVersion[] }>("/models/registry");
   const drift = useSWR<{ items: DriftRow[]; drifting: number }>("/intelligence/drift");
-  const recentTrain = useSWR<Page<Job>>("/jobs?kind=train&limit=1");
   const [selected, setSelected] = useState<string>("active");
   const diag = useSWR<Diagnostics>(`/intelligence/diagnostics/${selected}`, { shouldRetryOnError: false });
 
-  const [horizon, setHorizon] = useState(7);
-  const [epochs, setEpochs] = useState("30");
-  const [autoPromote, setAutoPromote] = useState(true);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [trainErr, setTrainErr] = useState<unknown>(null);
-  const [busy, setBusy] = useState(false);
   const [actionErr, setActionErr] = useState<unknown>(null);
   // Resume tracking a training job that is still running (e.g. after a page reload).
-  const recent = recentTrain.data?.items[0];
-  const trackedId = jobId ?? (recent && !TERMINAL.has(recent.status) ? recent.id : null);
-  const job = useJob(trackedId, (id) => `/train/${id}/status`);
+  const { job, refreshRecent } = useTrainingJob(jobId);
 
   const done = job.data && TERMINAL.has(job.data.status);
   useEffect(() => {
@@ -41,26 +35,6 @@ export default function ModelsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done]);
-
-  const train = async (e: FormEvent) => {
-    e.preventDefault();
-    setTrainErr(null);
-    const n = Number(epochs);
-    if (!Number.isInteger(n) || n < 1 || n > 200) return setTrainErr(new Error("Epochs must be a whole number from 1 to 200"));
-    setBusy(true);
-    try {
-      const j = await api<Job>("/train", {
-        method: "POST",
-        body: { horizon, max_epochs: n, auto_promote: autoPromote },
-        headers: { "idempotency-key": crypto.randomUUID() },
-      });
-      setJobId(j.id);
-    } catch (e2) {
-      setTrainErr(e2);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const promote = async (m: ModelVersion, force = false) => {
     setActionErr(null);
@@ -82,27 +56,12 @@ export default function ModelsPage() {
       />
       {can("train_models") && (
         <Card title="Train a new version" subtitle="Training runs in the background. A version is promoted only if it passes the quality gate." className="mb-6">
-          <form onSubmit={train} className="flex flex-wrap items-end gap-3">
-            <Field label="Horizon (days)" htmlFor="th">
-              <Select id="th" value={horizon} onChange={(e) => setHorizon(Number(e.target.value))}>
-                {[7, 14, 28, 56].map((h) => <option key={h} value={h}>{h}</option>)}
-              </Select>
-            </Field>
-            <Field label="Max epochs" htmlFor="te" hint="Early stopping may end sooner">
-              <Input id="te" inputMode="numeric" value={epochs} onChange={(e) => setEpochs(e.target.value)} className="w-28" />
-            </Field>
-            <label className="mb-2 flex items-center gap-2 text-sm text-muted">
-              <input type="checkbox" checked={autoPromote} onChange={(e) => setAutoPromote(e.target.checked)} />
-              Promote automatically if the gate passes
-            </label>
-            <Button type="submit" variant="primary" loading={busy} disabled={!!job.data && !TERMINAL.has(job.data.status)}>
-              Start training
-            </Button>
-          </form>
-          {trainErr != null && <div className="mt-3"><ErrorState error={trainErr} /></div>}
+          <TrainForm onStarted={(j) => setJobId(j.id)} running={!!job.data && !TERMINAL.has(job.data.status)} onError={() => void refreshRecent()} />
           {job.data && <div className="mt-3"><JobProgress job={job.data} canCancel onChanged={() => job.mutate()} /></div>}
         </Card>
       )}
+
+      <LiveAccuracyCard className="mb-6" />
 
       <Card
         title="Model registry"
