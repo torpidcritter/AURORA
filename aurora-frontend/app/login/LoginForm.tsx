@@ -73,6 +73,7 @@ export function LoginForm() {
       <Button type="submit" variant="primary" loading={busy} className="w-full">
         Sign in
       </Button>
+      <p className="text-center text-xs text-muted">Forgot your password? Ask an administrator for a reset link.</p>
     </form>
   );
 }

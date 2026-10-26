@@ -3,11 +3,12 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 
+import { ResetLinkPanel } from "@/components/ResetLinkPanel";
 import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, Field, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import type { Page, Role, User } from "@/lib/types";
+import type { Page, ResetLink, Role, User } from "@/lib/types";
 import { passwordProblem } from "@/lib/validation";
 
 const ROLES: Role[] = ["viewer", "operator", "analyst", "admin"];
@@ -22,6 +23,8 @@ export default function UsersPage() {
   const [rowErr, setRowErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // A freshly issued reset link, kept only in memory and shown once.
+  const [resetLink, setResetLink] = useState<{ email: string; link: ResetLink } | null>(null);
 
   if (!can("manage_users")) return <Notice tone="warn">Only administrators can manage users.</Notice>;
 
@@ -54,6 +57,13 @@ export default function UsersPage() {
     }
   };
 
+  const issueResetLink = async (u: User) => {
+    setRowErr(null);
+    setResetLink(null);
+    const link = await api<ResetLink>(`/auth/users/${u.id}/reset-link`, { method: "POST" });
+    setResetLink({ email: u.email, link });
+  };
+
   return (
     <>
       <PageHeader title="Users" description="People in your organisation and what they can do. Role changes and deactivation sign the user out everywhere." />
@@ -76,6 +86,7 @@ export default function UsersPage() {
       </Card>
       <Card title="Members">
         {rowErr != null && <div className="mb-3"><ErrorState error={rowErr} /></div>}
+        {resetLink && <ResetLinkPanel email={resetLink.email} link={resetLink.link} onDone={() => setResetLink(null)} />}
         {list.error ? (
           <ErrorState error={list.error} onRetry={() => list.mutate()} />
         ) : !list.data ? (
@@ -112,19 +123,32 @@ export default function UsersPage() {
                       <Td>{u.is_active ? <Badge tone="ok">active</Badge> : <Badge tone="warn">deactivated</Badge>}</Td>
                       <Td>{fmtDateTime(u.last_login_at)}</Td>
                       <Td className="text-right">
-                        {!self &&
-                          (u.is_active ? (
+                        <div className="flex justify-end gap-2">
+                          {!self && u.is_active && can("manage_users") && (
                             <ConfirmButton
-                              title={`Deactivate ${u.email}?`}
-                              body="They are signed out immediately and cannot sign in until reactivated. Their history and audit records are kept."
-                              confirmLabel="Deactivate"
-                              onConfirm={() => patch(u, { is_active: false })}
+                              variant="secondary"
+                              title={`Create a reset link for ${u.email}?`}
+                              body="You get a one-time link that lets them choose a new password. Any earlier link for them stops working. Using it signs them out everywhere."
+                              confirmLabel="Create link"
+                              onConfirm={() => issueResetLink(u)}
                             >
-                              Deactivate
+                              Reset link
                             </ConfirmButton>
-                          ) : (
-                            <Button variant="ghost" onClick={() => void patch(u, { is_active: true })}>Reactivate</Button>
-                          ))}
+                          )}
+                          {!self &&
+                            (u.is_active ? (
+                              <ConfirmButton
+                                title={`Deactivate ${u.email}?`}
+                                body="They are signed out immediately and cannot sign in until reactivated. Their history and audit records are kept."
+                                confirmLabel="Deactivate"
+                                onConfirm={() => patch(u, { is_active: false })}
+                              >
+                                Deactivate
+                              </ConfirmButton>
+                            ) : (
+                              <Button variant="ghost" onClick={() => void patch(u, { is_active: true })}>Reactivate</Button>
+                            ))}
+                        </div>
                       </Td>
                     </tr>
                   );

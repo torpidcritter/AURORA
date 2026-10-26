@@ -85,6 +85,19 @@ class RefreshToken(TimestampMixin, Base):
     ip: Mapped[str | None] = mapped_column(String(64))
 
 
+class PasswordResetToken(TimestampMixin, Base):
+    """Admin-issued one-time reset link. Only the SHA-256 of the token is stored; the link itself is shown once."""
+
+    __tablename__ = "password_reset_tokens"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Dataset(TimestampMixin, Base):
     __tablename__ = "datasets"
     __table_args__ = (UniqueConstraint("org_id", "sha256", name="uq_datasets_org_sha"),)
@@ -373,6 +386,7 @@ __all__ = [
     "Organization",
     "User",
     "RefreshToken",
+    "PasswordResetToken",
     "Dataset",
     "Product",
     "SalesRecord",
