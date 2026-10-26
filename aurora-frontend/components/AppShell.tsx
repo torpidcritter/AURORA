@@ -15,6 +15,7 @@ import {
   Package,
   ScrollText,
   ShieldAlert,
+  SlidersHorizontal,
   TrendingUp,
   Upload,
   Users,
@@ -74,6 +75,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/admin/users", label: "Users", icon: Users, perm: "manage_users" },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText, perm: "view_audit" },
       { href: "/admin/ops", label: "System & integrations", icon: Activity, perm: "view_ops" },
+      { href: "/admin/settings", label: "Settings", icon: SlidersHorizontal, perm: "manage_settings" },
     ],
   },
 ];

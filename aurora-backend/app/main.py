@@ -22,6 +22,7 @@ ROUTERS = [
     ("app.api.routes.ops", "router"),
     ("app.api.routes.assistant", "router"),
     ("app.api.routes.shopify", "router"),
+    ("app.api.routes.settings", "router"),
 ]
 
 
