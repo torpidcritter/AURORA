@@ -65,12 +65,15 @@ class LocalStorage:
 class S3Storage:
     def __init__(self) -> None:
         import boto3
+        from botocore.config import Config
 
         s = get_settings()
         self.bucket = s.s3_bucket
         self.client = boto3.client(
             "s3",
             endpoint_url=s.s3_endpoint_url,
+            # Self-hosted S3 (MinIO etc.) is addressed by host name, so bucket-in-hostname addressing cannot resolve.
+            config=Config(s3={"addressing_style": "path"}) if s.s3_endpoint_url else None,
             aws_access_key_id=s.s3_access_key.get_secret_value() if s.s3_access_key else None,
             aws_secret_access_key=s.s3_secret_key.get_secret_value() if s.s3_secret_key else None,
             region_name=s.s3_region,
