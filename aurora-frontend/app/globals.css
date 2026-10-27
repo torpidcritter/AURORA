@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #070a12;
+  --color-surface: #0c111c;
+  --color-surface-2: #121a2a;
+  --color-line: rgba(148, 163, 184, 0.14);
+  /* Hairline border for glass surfaces (spec 9.2). */
+  --color-glass-line: rgba(148, 163, 184, 0.08);
+  --color-ink: #e6ebf3;
+  --color-muted: #94a3b8;
+  /* At least 4.9:1 on every surface, including surface-2 and the glass composite (WCAG AA for small text). */
+  --color-faint: #7c8aa1;
+  --color-primary: #38bdf8;
+  --color-ok: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #fb7185;
+  --color-ai: #a78bfa;
+  --shadow-glass: 0 0 0 1px rgba(56, 189, 248, 0.02), 0 16px 40px -20px rgba(56, 189, 248, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+  /* Glass surfaces (spec 9.2): translucent dark fill + 16px backdrop blur. */
+  --glass-bg: rgba(10, 14, 23, 0.58);
+  /* Overlays that sit on top of page content (sticky header, drawers, dialogs, the assistant panel, tooltips) stay
+     nearly opaque so text behind them cannot lower the contrast of their own text. */
+  --glass-bg-strong: rgba(10, 14, 23, 0.9);
+  /* Solid fallback when backdrop-filter is unsupported or the user prefers reduced transparency. */
+  --glass-bg-solid: #0c111c;
+  --glass-blur: 16px;
+}
+
+/* Translucent card surface. Pair with `border border-glass-line shadow-glass`. */
+@utility glass {
+  background-color: var(--glass-bg-solid);
+
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background-color: var(--glass-bg);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--glass-bg-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Glass for overlays on top of page content. */
+@utility glass-strong {
+  background-color: var(--glass-bg-solid);
+
+  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    background-color: var(--glass-bg-strong);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--glass-bg-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+body {
+  background-image: radial-gradient(1200px 600px at 10% -10%, rgba(56, 189, 248, 0.06), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, rgba(167, 139, 250, 0.05), transparent 60%);
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
