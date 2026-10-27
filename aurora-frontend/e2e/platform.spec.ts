@@ -77,6 +77,55 @@ test.describe.serial("Aurora end to end", () => {
     await expect(row).toHaveCount(0);
   });
 
+  test("supplier, purchase order from draft to received, overrides and overstock", async () => {
+    const supplier = `E2E Supply ${Date.now()}`;
+    await page.goto("/suppliers");
+    await page.getByLabel("Name").fill(supplier);
+    await page.getByLabel("Lead time (days)").fill("5");
+    await page.getByRole("button", { name: "Add supplier" }).click();
+    await expect(page.getByRole("row").filter({ hasText: supplier })).toBeVisible();
+
+    // Link a product to the supplier and add a planner override on its page.
+    await page.goto("/products");
+    await page.getByRole("table", { name: "Products" }).getByRole("link").nth(1).click();
+    await page.getByLabel("Supplier", { exact: true }).selectOption({ label: `${supplier} (5 d lead time)` });
+    await page.getByRole("button", { name: "Update supplier" }).click();
+    await expect(page.getByRole("button", { name: "Update supplier" })).toBeDisabled();
+    await page.getByLabel("From", { exact: true }).fill("2031-01-01");
+    await page.getByLabel("To", { exact: true }).fill("2031-01-07");
+    await page.getByLabel("Reason", { exact: true }).fill("E2E launch");
+    await page.getByRole("button", { name: "Add override" }).click();
+    await expect(page.getByText("E2E launch")).toBeVisible();
+
+    // New order: draft, add a line, approve, mark as sent, receive.
+    await page.goto("/purchase-orders");
+    await page.getByRole("button", { name: "New order" }).click();
+    await expect(page).toHaveURL(/\/purchase-orders\/[0-9a-f-]{36}$/);
+    await page.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Supplier").selectOption({ label: supplier });
+    await page.getByLabel("Add a product").selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Add line" }).click();
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByRole("table", { name: /^Lines of PO-/ })).toBeVisible();
+    await page.getByRole("button", { name: "Approve" }).click();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Mark as sent" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Mark as sent" }).click();
+    await expect(page.getByText("Sent", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Receive goods" }).click();
+    await page.getByRole("button", { name: "Book into stock" }).click();
+    await expect(page.getByRole("table", { name: /^Lines of PO-/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel order" })).toHaveCount(0); // fully received: nothing left to do
+    const csv = await page.evaluate(async (href) => (await fetch(href)).text(), await page.getByRole("link", { name: "Download CSV" }).getAttribute("href") ?? "");
+    expect(csv).toContain(supplier);
+
+    await page.goto("/overstock");
+    await expect(page.getByRole("heading", { name: "Overstock and dead stock" })).toBeVisible();
+    await expect(page.getByText("Excess stock value")).toBeVisible();
+    await page.goto("/overrides");
+    await expect(page.getByRole("table", { name: "Forecast overrides and their accuracy" })).toContainText("E2E launch");
+  });
+
   test("training runs on the real worker and registers a version", async () => {
     test.setTimeout(600_000);
     await page.goto("/models");

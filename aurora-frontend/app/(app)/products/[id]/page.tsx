@@ -6,6 +6,8 @@ import useSWR from "swr";
 
 import { DemandForecastChart } from "@/components/charts";
 import { InventoryEditor } from "@/components/InventoryEditor";
+import { OverridesCard } from "@/components/OverridesCard";
+import { SupplierPicker } from "@/components/SupplierPicker";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, LoadingBlock, Notice, PageHeader, Select, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -95,7 +97,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         ) : history.data.points.length === 0 ? (
           <EmptyState title="No sales history for this product" />
         ) : (
-          <DemandForecastChart history={history.data.points} forecast={fc?.points} coverage={fc?.interval.coverage} />
+          <DemandForecastChart history={history.data.points} forecast={fc?.points} coverage={fc?.interval.coverage} adjusted={fc?.adjusted_points} />
         )}
         {fc && (
           <div className="mt-4 space-y-2 text-sm text-muted">
@@ -110,6 +112,11 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               </p>
             )}
             <p>Transformer: {fc.transformer_status}{fc.model_version ? ` (model ${fc.model_version})` : ""}.</p>
+            {fc.overrides?.length ? (
+              <Notice tone="info">
+                A planner override covers {fc.overrides.reduce((n, o) => n + o.days, 0)} day(s) of this horizon ({fc.overrides.map((o) => o.reason).join("; ")}). The purple line is the demand used for reorder decisions; the dashed line is the model.
+              </Notice>
+            ) : null}
             {fc.warnings.map((w) => <Notice key={w} tone="warn">{w}</Notice>)}
             {fc.signals.length > 0 && (
               <Notice tone="info">
@@ -197,7 +204,26 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             }}
           />
           <p className="mt-3 text-xs text-faint">Units on hand: {p.inventory_known ? fmtInt(p.on_hand) : "unknown"} · on order {fmtInt(p.on_order)} · 30-day average {fmt1(p.avg_daily_30d)}/day</p>
+          <div className="mt-4 border-t border-line pt-4">
+            <SupplierPicker
+              product={p}
+              editable={can("manage_purchasing")}
+              onSaved={async () => {
+                await product.mutate();
+                await loadRec();
+              }}
+            />
+          </div>
         </Card>
+
+        <OverridesCard
+          productId={p.id}
+          editable={can("manage_overrides")}
+          onChanged={async () => {
+            await loadRec();
+            runForecast();
+          }}
+        />
       </div>
     </>
   );

@@ -144,14 +144,16 @@ export function Field({ label, hint, error, children, htmlFor }: { label: string
 }
 
 const inputCls =
-  "w-full rounded-lg border border-line bg-bg/60 px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-primary focus:outline-none disabled:opacity-60";
+  "rounded-lg border border-line bg-bg/60 px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-primary focus:outline-none disabled:opacity-60";
+// Full width unless the caller sets a width (both utilities in one class list would leave the winner to CSS order).
+const width = (className?: string) => (/(^|\s)w-/.test(className ?? "") ? null : "w-full");
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={clsx(inputCls, props.className)} />;
+  return <input {...props} className={clsx(inputCls, width(props.className), props.className)} />;
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={clsx(inputCls, "pr-8", props.className)} />;
+  return <select {...props} className={clsx(inputCls, width(props.className), "pr-8", props.className)} />;
 }
 
 export function Skeleton({ className }: { className?: string }) {

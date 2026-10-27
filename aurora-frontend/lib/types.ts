@@ -92,6 +92,7 @@ export interface Product {
   pack_size: number;
   min_order_qty: number;
   missing_policy: "zero" | "interpolate";
+  supplier_id?: string | null;
   version: number;
   first_date: string | null;
   last_date: string | null;
@@ -158,6 +159,21 @@ export interface Forecast {
   signals: Signal[];
   warnings: string[];
   forecast_id?: string;
+  /** Present when a planner override covers part of the horizon; `points` stays the model's forecast. */
+  adjusted_points?: AdjustedPoint[];
+  overrides?: AppliedOverride[];
+}
+
+export interface AdjustedPoint extends ForecastPoint {
+  yhat_model?: number;
+}
+
+export interface AppliedOverride {
+  id: string;
+  kind: OverrideKind;
+  value: number;
+  reason: string;
+  days: number;
 }
 
 export interface Recommendation {
@@ -422,4 +438,138 @@ export interface OrgSetting {
 export interface OrgSettings {
   items: OrgSetting[];
   alert_channels: string[];
+}
+
+// --- purchasing -------------------------------------------------------------------------------------------------------
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  email: string | null;
+  phone: string | null;
+  lead_time_days: number | null;
+  min_order_value: number | null;
+  notes: string | null;
+  is_active: boolean;
+  version: number;
+  product_count: number | null;
+  created_at: string | null;
+}
+
+export type POStatus = "draft" | "approved" | "sent" | "partially_received" | "received" | "cancelled";
+
+export interface POLine {
+  id: string;
+  product_id: string;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit_cost: number | null;
+  line_value: number | null;
+  received_qty: number;
+  outstanding_qty: number;
+  suggested_qty: number | null;
+  suggestion: Record<string, unknown> | null;
+  pack_size: number;
+  min_order_qty: number;
+}
+
+export interface POSummary {
+  id: string;
+  number: string;
+  status: POStatus;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  expected_date: string | null;
+  source: "manual" | "suggested";
+  created_at: string | null;
+  line_count: number;
+  total_units: number;
+  total_value: number;
+  total_complete: boolean;
+}
+
+export interface PurchaseOrder extends POSummary {
+  supplier_email: string | null;
+  notes: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  sent_at: string | null;
+  received_at: string | null;
+  cancelled_at: string | null;
+  version: number;
+  lines: POLine[];
+  warnings: string[];
+}
+
+export interface SuggestResult {
+  created: PurchaseOrder[];
+  skipped: { already_on_order: number; no_reorder_needed: number; no_data: number };
+}
+
+export type OverrideKind = "set" | "scale";
+
+export interface ForecastOverride {
+  id: string;
+  product_id: string;
+  sku: string | null;
+  name: string | null;
+  start_date: string;
+  end_date: string;
+  kind: OverrideKind;
+  value: number;
+  reason: string;
+  created_by: string | null;
+  created_at: string | null;
+  archived_at: string | null;
+}
+
+export type FvaVerdict = "helped" | "hurt" | "no_change" | "pending";
+
+export interface FvaScore {
+  scored_days: number;
+  model_wape: number | null;
+  override_wape: number | null;
+  fva_points: number | null;
+  verdict: FvaVerdict;
+}
+
+export interface OverrideValueAdded {
+  window_days: number;
+  overrides: (ForecastOverride & FvaScore)[];
+  overall: FvaScore | null;
+}
+
+export interface OverstockItem {
+  product_id: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  status: "dead" | "overstock";
+  on_hand: number;
+  on_order: number;
+  units_trailing: number;
+  avg_daily_demand: number;
+  days_of_cover: number | null;
+  last_sale_date: string | null;
+  days_since_last_sale: number | null;
+  excess_units: number;
+  unit_cost: number | null;
+  stock_value: number | null;
+  excess_value: number | null;
+  suggestions: string[];
+}
+
+export interface OverstockReport {
+  as_of: string | null;
+  cover_days: number;
+  dead_days: number;
+  trailing_days: number;
+  summary: { products: number; dead: number; overstock: number; excess_value: number; stock_value: number; missing_cost?: number };
+  items: OverstockItem[];
+  total: number;
+  limit: number;
+  offset: number;
 }

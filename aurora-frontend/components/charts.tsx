@@ -21,7 +21,7 @@ import {
 } from "recharts";
 
 import { fmt1, fmtPct, fmtShortDate } from "@/lib/format";
-import type { ForecastPoint, HistoryPoint, Recommendation } from "@/lib/types";
+import type { AdjustedPoint, ForecastPoint, HistoryPoint, Recommendation } from "@/lib/types";
 
 /**
  * Colour roles from the design system (spec 9.2). A colour always means the same thing on every chart:
@@ -119,20 +119,34 @@ interface DemandRow {
   imputed?: boolean;
   forecast?: number;
   band?: [number, number];
+  /** Planner-adjusted demand, only on days an override covers. */
+  adjusted?: number;
 }
 
-export function DemandForecastChart({ history, forecast, coverage }: { history: HistoryPoint[]; forecast?: ForecastPoint[]; coverage?: number }) {
+export function DemandForecastChart({
+  history,
+  forecast,
+  coverage,
+  adjusted,
+}: {
+  history: HistoryPoint[];
+  forecast?: ForecastPoint[];
+  coverage?: number;
+  adjusted?: AdjustedPoint[];
+}) {
   const rows: DemandRow[] = history.map((h) => ({ date: h.date, actual: h.units, imputed: h.imputed }));
   if (forecast?.length && rows.length) {
     // connect the forecast line to the last actual so the hand-off is visible
     const last = rows[rows.length - 1]!;
     last.forecast = last.actual;
   }
+  const adj = new Map((adjusted ?? []).filter((a) => a.yhat_model != null).map((a) => [a.date, a.yhat]));
   for (const f of forecast ?? []) {
     rows.push({
       date: f.date,
       forecast: f.yhat,
       band: f.lower != null && f.upper != null ? [f.lower, f.upper] : undefined,
+      adjusted: adj.get(f.date),
     });
   }
   const splitDate = forecast?.[0]?.date;
@@ -142,8 +156,15 @@ export function DemandForecastChart({ history, forecast, coverage }: { history: 
       label="Daily demand history and forecast"
       table={
         <SimpleTable
-          cols={["Date", "Actual", "Forecast", "Lower", "Upper"]}
-          rows={rows.map((r) => [r.date, r.actual != null ? fmt1(r.actual) + (r.imputed ? " (imputed)" : "") : "", r.forecast != null && r.actual == null ? fmt1(r.forecast) : "", r.band ? fmt1(r.band[0]) : "", r.band ? fmt1(r.band[1]) : ""])}
+          cols={["Date", "Actual", "Forecast", "Lower", "Upper", ...(adj.size ? ["With override"] : [])]}
+          rows={rows.map((r) => [
+            r.date,
+            r.actual != null ? fmt1(r.actual) + (r.imputed ? " (imputed)" : "") : "",
+            r.forecast != null && r.actual == null ? fmt1(r.forecast) : "",
+            r.band ? fmt1(r.band[0]) : "",
+            r.band ? fmt1(r.band[1]) : "",
+            ...(adj.size ? [r.adjusted != null ? fmt1(r.adjusted) : ""] : []),
+          ])}
         />
       }
     >
@@ -160,6 +181,7 @@ export function DemandForecastChart({ history, forecast, coverage }: { history: 
               if (r.actual != null) out.push({ label: r.imputed ? "Actual (imputed)" : "Actual", value: fmt1(r.actual), color: ROLE.actual });
               if (r.forecast != null && r.actual == null) out.push({ label: "Forecast", value: fmt1(r.forecast), color: ROLE.forecast });
               if (r.band) out.push({ label: covLabel, value: `${fmt1(r.band[0])} – ${fmt1(r.band[1])}` });
+              if (r.adjusted != null) out.push({ label: "With planner override", value: fmt1(r.adjusted), color: ROLE.ai });
               return <TooltipBox title={fmtShortDate(String(label))} rows={out} />;
             }}
           />
@@ -168,6 +190,9 @@ export function DemandForecastChart({ history, forecast, coverage }: { history: 
           <Area dataKey="band" name={covLabel} stroke="none" fill={ROLE.forecast} fillOpacity={0.16} isAnimationActive={false} legendType="square" />
           <Line legendType="plainline" dataKey="actual" name="Actual" stroke={ROLE.actual} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
           <Line legendType="plainline" dataKey="forecast" name="Forecast" stroke={ROLE.forecast} strokeWidth={2} strokeDasharray={DASH.forecast} dot={false} isAnimationActive={false} connectNulls />
+          {adj.size > 0 && (
+            <Line legendType="plainline" dataKey="adjusted" name="With planner override" stroke={ROLE.ai} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
     </ChartFrame>
