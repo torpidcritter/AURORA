@@ -20,6 +20,9 @@ for _k in (
     "SHOPIFY_API_SECRET",
     "SHOPIFY_API_SECRET_PREVIOUS",
     "TOKEN_ENCRYPTION_KEYS",
+    "MAIL_BACKEND",
+    "SMTP_HOST",
+    "OUTBOUND_ALLOW_PRIVATE",
 ):
     os.environ.pop(_k, None)
 

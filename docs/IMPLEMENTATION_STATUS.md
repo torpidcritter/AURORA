@@ -17,11 +17,11 @@ production-proven.
 
 | Suite | Command | Result (2026-10-27) |
 |---|---|---|
-| Backend unit + integration + platform flow | `pytest -q` (PostgreSQL, fakeredis, eager Celery) | **382 passed** |
+| Backend unit + integration + platform flow | `pytest -q` (PostgreSQL, fakeredis, eager Celery) | **398 passed** |
 | Backend lint / migrations / deps | `ruff check`, `ruff format --check`, `alembic check`, `pip-audit` | clean (CI) |
-| Frontend unit | `npm test` (Vitest) | **157 passed** |
+| Frontend unit | `npm test` (Vitest) | **161 passed** |
 | Frontend static | `npm run typecheck`, `npm run lint`, `npm run build`, `npm audit --audit-level=high` | clean |
-| Browser E2E | `npx playwright test` against the built frontend, API, live Celery worker and Redis | 13 tests (CI; all 13 also passed locally on 2026-10-27) |
+| Browser E2E | `npx playwright test` against the built frontend, API, live Celery worker and Redis | 14 tests (CI; all 14 also passed locally on 2026-10-27) |
 | Containers | CI `containers` job (images, Compose, restricted DB role, MinIO, smoke test, Locust smoke) | see PR checks |
 | Secret scan | `python scripts/secret_scan.py` over tracked files (CI job) | no findings |
 
@@ -54,6 +54,7 @@ How to run each suite: `docs/TESTING.md`.
 | Forecast overrides: set/scale application, validation, no overlaps, archive, use in recommendations and next to the forecast, forecast value added against actuals; overstock and dead-stock report | `tests/integration/test_overrides_overstock.py`, `aurora-frontend/tests/purchasing.test.tsx` |
 | Stock locations: legacy stock adopted into the default, levels always summing to the totals, counts and uploads requiring a location once there are several, transfers validated and never overselling under concurrency, location rules, purchase orders moving stock at their delivery location | `tests/integration/test_locations.py`, `aurora-frontend/tests/locations.test.tsx`, Playwright transfer flow |
 | Category forecasts: categories with recent units, products adding up to the group for both reconciliation methods, recommendation following the lower backtest error, interval only on the group model, overrides flowing into the bottom-up total, stale and unsold products, group size cap, tenant isolation | `tests/integration/test_hierarchy.py`, `aurora-frontend/tests/hierarchy.test.tsx`, Playwright category forecast |
+| Digests: slot timing, schedule rules and version guard, SSRF checks (scheme, credentials, port, private and reserved addresses, Slack host), encrypted targets never returned or audited, e-mail only with SMTP configured (fake SMTP server), scheduler sending each slot once, failed and redirected deliveries recorded, Slack escaping, content of every section, tenant isolation | `tests/integration/test_digests.py`, `aurora-frontend/tests/digests.test.tsx`, Playwright digest flow |
 | Load test logic: pacing under rate limits, pass/fail gates | `unit/test_load_support.py`; local and CI Locust runs |
 | Secret scanner rules and allowlist | `unit/test_secret_scan.py` |
 
@@ -94,6 +95,8 @@ candidate by the promotion gate.
   location.
 - Category forecasts are computed on request (up to 200 products, about 30 seconds for a cold category in the E2E
   stack); there is no store level because sales carry no location.
+- Digests are not retried automatically after a failed send, and e-mail has only been tested against a fake SMTP
+  server. Webhook targets are checked against private networks, but DNS rebinding needs an egress firewall to rule out.
 - Overstock suggestions are descriptive only; there is no price or elasticity model.
 - No penetration test or external security review has been done.
 

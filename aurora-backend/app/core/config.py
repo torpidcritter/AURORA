@@ -138,6 +138,18 @@ class Settings(BaseSettings):
     # Organisations can override it in their settings (PATCH /settings/org).
     alert_min_severity: Literal["low", "medium", "high", "critical"] = "high"
     frontend_url: str = "http://localhost:3100"
+    # Outbound requests to addresses users enter (digest webhooks) must go to public HTTPS hosts. Only for local
+    # development and tests: allow private, loopback and plain-HTTP addresses.
+    outbound_allow_private: bool = False
+    # E-mail. "log" records that a message would be sent (no content) and is the default; "smtp" sends through any
+    # SMTP relay (Postmark, SES, Resend and most providers offer one).
+    mail_backend: Literal["log", "smtp"] = "log"
+    mail_from: str = "Aurora <no-reply@localhost>"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = True
     # Fernet key(s), comma-separated, newest first, used to encrypt third-party access tokens at rest.
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_keys: SecretStr | None = None
@@ -197,9 +209,15 @@ class Settings(BaseSettings):
                 raise ValueError("Wildcard CORS origins are not allowed outside development")
             if self.bff_shared_secret is not None and len(self.bff_shared_secret.get_secret_value()) < 32:
                 raise ValueError("BFF_SHARED_SECRET must be at least 32 characters")
+            if self.outbound_allow_private:
+                raise ValueError("OUTBOUND_ALLOW_PRIVATE is for development only")
             if self.shopify_api_key and not self.token_encryption_keys:
                 raise ValueError("TOKEN_ENCRYPTION_KEYS is required when the Shopify integration is enabled")
         return self
+
+    @property
+    def mail_configured(self) -> bool:
+        return self.mail_backend == "smtp" and bool(self.smtp_host)
 
     @property
     def cors_origins(self) -> list[str]:

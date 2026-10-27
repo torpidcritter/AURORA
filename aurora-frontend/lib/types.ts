@@ -669,3 +669,34 @@ export interface HierarchyForecast {
   breakdown: HierarchyRow[];
   warnings: string[];
 }
+
+export type DigestSection = "stockouts" | "overstock" | "accuracy" | "alerts" | "purchasing";
+export type DigestChannel = "in_app" | "webhook" | "slack" | "email";
+
+export interface DigestSchedule {
+  id: string;
+  name: string;
+  frequency: "daily" | "weekly";
+  weekday: number | null;
+  hour_utc: number;
+  sections: DigestSection[];
+  channel: DigestChannel;
+  target_hint: string | null;
+  is_active: boolean;
+  next_run_at: string;
+  last_run_at: string | null;
+  version: number;
+  created_at: string;
+}
+
+export interface DigestRun {
+  id: string;
+  schedule_id: string | null;
+  title: string;
+  channel: DigestChannel;
+  status: "delivered" | "failed" | "in_app";
+  error: string | null;
+  trigger: "schedule" | "manual";
+  created_at: string;
+  text?: string[];
+}

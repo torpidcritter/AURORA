@@ -79,7 +79,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [ ] E-mailing purchase orders to suppliers (needs an e-mail provider)
 - [x] Multiple stock locations: per-location counts and uploads, transfers, purchase order delivery location (ADR-034)
 - [x] Category and organisation forecasts that add up to product forecasts, bottom-up or top-down by backtest (ADR-035)
-- [ ] Next roadmap items: see the "build everything" list (digests, budget ordering, supplier price breaks, ...);
+- [x] Scheduled digests to the app, Slack, webhooks or e-mail (SMTP), with SSRF-checked, encrypted targets (ADR-036)
+- [ ] Next roadmap items: see the "build everything" list (budget ordering, supplier price breaks, ...);
   per-location demand needs sales by location
 
 ## Follow-ups

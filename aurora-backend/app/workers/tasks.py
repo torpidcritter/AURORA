@@ -217,6 +217,17 @@ def poll_and_dispatch_alerts() -> dict:
         db.close()
 
 
+@celery_app.task(name="aurora.run_due_digests")
+def run_due_digests() -> dict:
+    from app.services import digest_service
+
+    db = get_sessionmaker()()
+    try:
+        return digest_service.run_due(db)
+    finally:
+        db.close()
+
+
 @celery_app.task(name="aurora.cleanup_audit_logs")
 def cleanup_audit_logs() -> int:
     days = get_settings().audit_retention_days

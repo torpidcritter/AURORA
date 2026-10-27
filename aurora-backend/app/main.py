@@ -25,6 +25,7 @@ ROUTERS = [
     ("app.api.routes.settings", "router"),
     ("app.api.routes.purchasing", "router"),
     ("app.api.routes.locations", "router"),
+    ("app.api.routes.digests", "router"),
 ]
 
 

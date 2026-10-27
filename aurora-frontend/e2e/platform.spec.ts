@@ -74,6 +74,18 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByText(/backtest periods/)).toBeVisible();
   });
 
+  test("an in-app digest is scheduled, sent now and readable", async () => {
+    const name = `E2E digest ${Date.now() % 100_000}`;
+    await page.goto("/digests");
+    await page.getByLabel("Digest name").fill(name);
+    await page.getByRole("button", { name: "Create digest" }).click();
+    const row = page.getByRole("table", { name: "Digest schedules" }).getByRole("row").filter({ hasText: name });
+    await expect(row).toContainText("Daily at 07:00 UTC");
+    await row.getByRole("button", { name: "Send now" }).click();
+    await expect(page.getByLabel("Digest content")).toContainText("Stockout risk", { timeout: 90_000 });
+    await expect(page.getByRole("table", { name: "Recent digests" })).toContainText(name);
+  });
+
   test("signals can be added and deleted with confirmation", async () => {
     await page.goto("/signals");
     const name = `E2E promo ${Date.now()}`;

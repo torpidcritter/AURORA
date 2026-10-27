@@ -367,3 +367,22 @@ The spec names files that do not exist here; the responsibilities live in these 
 - Products with no sales are listed as excluded. A product whose last sale is so old that its forecast cannot reach the
   group's horizon counts as zero and is listed. Groups are capped at 200 products per request, and the endpoint is
   rate limited, because product forecasts may be generated on the way (they are stored, as for recommendations).
+
+## ADR-036 Scheduled digests, outbound webhooks and e-mail
+- A digest schedule (admins, `manage_settings`) picks sections (stockout risk, overstock, forecast accuracy, alerts,
+  purchasing), daily or weekly at an hour in UTC, and a channel: in-app only, Slack incoming webhook, a JSON webhook
+  or e-mail. Every digest is stored as a `digest_runs` row, so all roles can read it in the app whatever the channel,
+  and a failed delivery keeps its error for the admin to see. Sections reuse the same services as the pages.
+- Webhook and Slack URLs are user input, so they are checked against SSRF before saving and before each send: HTTPS on
+  the default port, no credentials in the URL, every resolved address public, redirects not followed, Slack only on
+  `hooks.slack.com`. DNS rebinding between check and connect remains possible; production egress should also block
+  private ranges. `OUTBOUND_ALLOW_PRIVATE` relaxes the check for development and is refused outside it.
+- Targets are credentials (a webhook path is its secret): they are stored encrypted with `TOKEN_ENCRYPTION_KEYS`,
+  shown and audited only as a masked hint, and never returned by the API.
+- Slack text escapes `<`, `>` and `&` so product names or alert titles cannot create links or mentions.
+- E-mail goes through `app/services/mailer.py`: `MAIL_BACKEND=log` (default) records only that a message would be sent;
+  `MAIL_BACKEND=smtp` sends through any SMTP relay with STARTTLS. The e-mail channel is refused until SMTP is set.
+- The beat task `aurora.run_due_digests` runs every 5 minutes. Each due schedule is claimed with `FOR UPDATE SKIP
+  LOCKED` and moved to its next slot, and that is committed before sending, so workers never send a slot twice and a
+  crash skips at most one digest. Sends are not retried automatically; "Send now" resends on demand (10 per hour per
+  organisation).

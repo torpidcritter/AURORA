@@ -31,6 +31,14 @@ MATRIX = [
     ("POST", "/forecast", {"product_id": X}, "viewer"),
     ("GET", "/forecast/methods", None, "viewer"),
     ("GET", "/forecast/hierarchy/categories", None, "viewer"),
+    ("GET", "/digests/schedules", None, "viewer"),
+    ("POST", "/digests/schedules", {"name": "x", "sections": ["alerts"]}, "admin"),
+    ("PATCH", f"/digests/schedules/{X}", {"expected_version": 1}, "admin"),
+    ("DELETE", f"/digests/schedules/{X}", None, "admin"),
+    ("POST", f"/digests/schedules/{X}/send", None, "admin"),
+    ("POST", "/digests/preview", {"sections": ["alerts"]}, "viewer"),
+    ("GET", "/digests", None, "viewer"),
+    ("GET", f"/digests/{X}", None, "viewer"),
     ("POST", "/forecast/hierarchy", {"level": "total"}, "viewer"),
     ("GET", f"/forecast/explain/{X}", None, "viewer"),
     ("GET", f"/forecast/history/{X}", None, "viewer"),
@@ -174,6 +182,8 @@ def test_every_route_is_in_the_matrix(app):
             "{po_id}",
             "{override_id}",
             "{location_id}",
+            "{schedule_id}",
+            "{digest_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

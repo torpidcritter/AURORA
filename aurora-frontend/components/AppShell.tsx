@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   TrendingUp,
+  Newspaper,
   Layers,
   Truck,
   Upload,
@@ -84,6 +85,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Intelligence",
     items: [
+      { href: "/digests", label: "Digests", icon: Newspaper },
       { href: "/models", label: "Models & drift", icon: BrainCircuit },
       { href: "/assistant", label: "Assistant", icon: Bot },
     ],

@@ -551,8 +551,61 @@ class StockTransfer(TimestampMixin, Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
+DIGEST_SECTIONS = ("stockouts", "overstock", "accuracy", "alerts", "purchasing")
+DIGEST_CHANNELS = ("in_app", "webhook", "slack", "email")
+
+
+class DigestSchedule(TimestampMixin, Base):
+    """A recurring summary sent to a channel (ADR-036). Targets (URLs, addresses) are encrypted at rest."""
+
+    __tablename__ = "digest_schedules"
+    __table_args__ = (
+        CheckConstraint("frequency IN ('daily','weekly')", name="ck_digest_schedules_frequency"),
+        CheckConstraint(f"channel IN {DIGEST_CHANNELS}", name="ck_digest_schedules_channel"),
+        CheckConstraint("hour_utc BETWEEN 0 AND 23", name="ck_digest_schedules_hour"),
+        CheckConstraint("weekday IS NULL OR weekday BETWEEN 0 AND 6", name="ck_digest_schedules_weekday"),
+        Index("ix_digest_schedules_due", "next_run_at", postgresql_where=text("is_active")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    frequency: Mapped[str] = mapped_column(String(10), nullable=False)
+    weekday: Mapped[int | None] = mapped_column(Integer)  # 0 = Monday, weekly only
+    hour_utc: Mapped[int] = mapped_column(Integer, nullable=False)
+    sections: Mapped[list] = mapped_column(JSONB, nullable=False)
+    channel: Mapped[str] = mapped_column(String(10), nullable=False)
+    target_encrypted: Mapped[str | None] = mapped_column(Text)
+    target_hint: Mapped[str | None] = mapped_column(String(200))  # masked, safe to show
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class DigestRun(TimestampMixin, Base):
+    """One built digest: its content (also the in-app copy) and how delivery went."""
+
+    __tablename__ = "digest_runs"
+    __table_args__ = (
+        CheckConstraint("status IN ('delivered','failed','in_app')", name="ck_digest_runs_status"),
+        Index("ix_digest_runs_org_created", "org_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("digest_schedules.id", ondelete="SET NULL"))
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    channel: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False)
+    error: Mapped[str | None] = mapped_column(String(500))
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    trigger: Mapped[str] = mapped_column(String(10), nullable=False, default="schedule")  # schedule | manual
+
+
 __all__ = [
     "Base",
+    "DigestSchedule",
+    "DigestRun",
     "Organization",
     "User",
     "RefreshToken",

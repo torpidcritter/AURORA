@@ -102,7 +102,8 @@ CI checks that the models and migrations agree (`alembic check`).
 - **Application:** rebuild or retag the previous images and `docker compose up -d`.
   Migrations `0002` and `0003` only add a table and columns; `0005` adds the supplier, purchase order and override
   tables and a nullable `products.supplier_id`, so code from before it still runs against the upgraded schema. `0006` adds locations, stock levels and transfers and
-  backfills a `MAIN` location; product totals are kept, but downgrading drops the per-location detail. Before downgrading, restore the pre-upgrade backup rather
+  backfills a `MAIN` location; product totals are kept, but downgrading drops the per-location detail. `0007` adds
+  the digest tables only. Before downgrading, restore the pre-upgrade backup rather
   than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.
@@ -198,6 +199,8 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | "The order was changed by someone else" | Someone acted on the same order | Reload the order and check it before trying again; nothing was applied |
 | "Choose a location for …" on a count or upload | The organisation has more than one active location | Pick the location on the product's *Stock by location* card, or add a `location` column with location codes to the upload |
 | Location totals do not match a stock take | *Locations*, *Recent transfers*, audit log `stock.transferred` and `inventory.update` | Count each location and save the count there; transfers between locations never change the product total |
+| A digest shows "failed" | *Digests* page, *View* on the digest shows the error; logs `aurora.digests` | Check the webhook still exists (Slack returns 404 for a removed one), or SMTP settings for e-mail. Fix the target and use *Send now*. Scheduled sends are not retried |
+| Digests are not sent at all | Celery beat running? Task `aurora.run_due_digests` in worker logs | Start beat (`celery -A app.workers.celery_app beat`); schedules whose slot passed are sent on the next tick |
 | Assistant says it is in fallback mode | Key missing, refused, or API error | Check `ANTHROPIC_API_KEY` and API logs. The fallback answers are deterministic and use the same authorised data |
 
 ## 10. Housekeeping

@@ -19,6 +19,7 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Locations:** stock per warehouse or store, transfers between them, and a delivery location on purchase orders.
 - **Planner overrides:** adjust the forecast used for decisions over a date range, and see whether each adjustment
   beat the model once actual sales arrive.
+- **Digests:** daily or weekly summaries in the app, Slack, a webhook or e-mail.
 - **Operations:** background training and batch forecasting, a model registry with a promotion gate and rollback,
   drift and accuracy monitoring, deduplicated alerts.
 - **Access:** organisations (tenants), four roles enforced by the API, audit log, rate limits.
