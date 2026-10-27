@@ -30,6 +30,8 @@ MATRIX = [
     ("POST", "/inventory/upload", "FILE", "operator"),
     ("POST", "/forecast", {"product_id": X}, "viewer"),
     ("GET", "/forecast/methods", None, "viewer"),
+    ("GET", "/forecast/hierarchy/categories", None, "viewer"),
+    ("POST", "/forecast/hierarchy", {"level": "total"}, "viewer"),
     ("GET", f"/forecast/explain/{X}", None, "viewer"),
     ("GET", f"/forecast/history/{X}", None, "viewer"),
     ("GET", "/forecast/latest", None, "viewer"),

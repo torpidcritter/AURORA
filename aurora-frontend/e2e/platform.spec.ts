@@ -63,6 +63,17 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByRole("table", { name: "Baseline versus scenario" })).toBeVisible({ timeout: 60_000 });
   });
 
+  test("a category forecast adds up to its products", async () => {
+    await page.goto("/category-forecasts");
+    await page.getByLabel("Group").selectOption({ index: 1 });
+    await page.getByLabel("Horizon (days)").selectOption("14");
+    await page.getByRole("button", { name: "Forecast group" }).click();
+    const table = page.getByRole("table", { name: "Product breakdown" });
+    await expect(table).toBeVisible({ timeout: 90_000 });
+    await expect(table.getByRole("row").filter({ hasText: "Total" })).toContainText("100%");
+    await expect(page.getByText(/backtest periods/)).toBeVisible();
+  });
+
   test("signals can be added and deleted with confirmation", async () => {
     await page.goto("/signals");
     const name = `E2E promo ${Date.now()}`;

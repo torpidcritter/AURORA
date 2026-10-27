@@ -624,3 +624,48 @@ export interface StockTransfer {
   created_by: string | null;
   created_at: string | null;
 }
+
+export interface HierarchyCategory {
+  category: string | null;
+  label: string;
+  products: number;
+  units_30d: number;
+}
+
+export interface HierarchyPoint extends ForecastPoint {
+  bottom_up: number;
+  direct: number;
+}
+
+export interface HierarchyRow {
+  product_id: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  method: string | null;
+  overrides: number;
+  units: number;
+  own_forecast_units: number;
+  share: number;
+}
+
+export interface HierarchyForecast {
+  level: "total" | "category";
+  category: string | null;
+  label: string;
+  as_of: string;
+  horizon: number;
+  coverage: number;
+  products: number;
+  products_forecast: number;
+  excluded: { product_id: string; sku: string; reason: string }[];
+  reconcile: "bottom_up" | "top_down";
+  recommended: "bottom_up" | "top_down";
+  backtest: { folds: number; wape: { direct: number | null; bottom_up: number | null } };
+  direct_method: string;
+  interval: { calibrated: boolean; empirical_coverage: number | null; note: string };
+  points: HierarchyPoint[];
+  history: { date: string; units: number }[];
+  breakdown: HierarchyRow[];
+  warnings: string[];
+}

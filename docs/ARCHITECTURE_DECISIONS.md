@@ -351,3 +351,19 @@ The spec names files that do not exist here; the responsibilities live in these 
 - A purchase order delivers to one location (the default unless chosen). Sending, receiving and cancelling move stock
   at that location. A location cannot be deactivated while it is the default, holds stock or has open orders.
 - Managing locations is an admin action (`manage_settings`); counts and transfers need `manage_inventory`.
+
+## ADR-035 Category and organisation forecasts that add up
+- A group is the whole organisation, one category, or products without a category. Store-level groups are not offered
+  because sales carry no location (ADR-034).
+- Two forecasts are made for the group: bottom-up, the sum of each product's decision forecast (the stored or freshly
+  generated forecast inventory uses, with planner overrides applied), and direct, the best statistical baseline fitted
+  to the group's total daily sales. Both are backtested at the group level on the same four rolling origins; products
+  that use the Transformer are stood in for by their best statistical method in that backtest, and the response says so.
+- Reconciliation keeps every day coherent: bottom-up keeps product forecasts and sums them; top-down keeps the direct
+  forecast and splits it by each product's share of the product forecasts that day (recent sales when those are all
+  zero). Without a choice the method with the lower backtest WAPE is used.
+- Only the direct forecast gets an interval (conformal, from its own residuals). Product intervals are not summed,
+  because their errors are correlated and simple addition would be wrong.
+- Products with no sales are listed as excluded. A product whose last sale is so old that its forecast cannot reach the
+  group's horizon counts as zero and is listed. Groups are capped at 200 products per request, and the endpoint is
+  rate limited, because product forecasts may be generated on the way (they are stored, as for recommendations).

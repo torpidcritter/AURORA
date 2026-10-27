@@ -18,12 +18,13 @@ from app.db.models import ExternalSignal, ForecastRun
 from app.db.session import get_db
 from app.ml import backtesting, drift
 from app.ml.statistical import METHOD_INFO
-from app.schemas.forecast import BacktestIn, ForecastIn, InventoryIn, RiskBatchIn, ScenarioIn, SignalIn
+from app.schemas.forecast import BacktestIn, ForecastIn, HierarchyIn, InventoryIn, RiskBatchIn, ScenarioIn, SignalIn
 from app.services import (
     accuracy_service,
     audit,
     explain_service,
     forecast_service,
+    hierarchy_service,
     inventory_service,
     override_service,
     scenario_service,
@@ -50,6 +51,22 @@ def forecast(body: ForecastIn, p: Principal = Depends(require(Perm.read)), db: S
     adjusted, applied = override_service.adjust_points(db, p.org_id, body.product_id, res["points"])
     if applied:
         res = {**res, "adjusted_points": adjusted, "overrides": applied}
+    return res
+
+
+@router.get("/forecast/hierarchy/categories")
+def hierarchy_categories(p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> list[dict]:
+    return hierarchy_service.categories(db, p.org_id)
+
+
+@router.post("/forecast/hierarchy")
+def hierarchy_forecast(
+    body: HierarchyIn, p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)
+) -> dict:
+    """Category or organisation forecast whose product numbers add up to the group number (ADR-035)."""
+    _throttle(p, "forecast-hierarchy", 10)
+    res = hierarchy_service.forecast(db, p.org_id, **body.model_dump())
+    db.commit()  # product forecasts generated on the way are stored, as for recommendations
     return res
 
 

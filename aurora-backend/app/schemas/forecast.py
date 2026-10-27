@@ -54,3 +54,11 @@ class SignalIn(BaseModel):
     end_date: date
     magnitude: float = Field(ge=-1.0, le=1.0)
     sku: str | None = Field(None, max_length=120)
+
+
+class HierarchyIn(BaseModel):
+    level: Literal["total", "category"] = "category"
+    category: str | None = Field(None, max_length=120)  # None with level "category" means products with no category
+    horizon: int = Field(28, ge=1, le=90)
+    coverage: Literal[0.8, 0.9, 0.95] = 0.9
+    reconcile: Literal["bottom_up", "top_down"] | None = None  # None: use the one that backtests better
