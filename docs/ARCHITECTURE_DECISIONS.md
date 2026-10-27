@@ -332,3 +332,22 @@ The spec names files that do not exist here; the responsibilities live in these 
   left out.
 - Suggestions are descriptive (pause reordering, review stock on order, consider clearance). Aurora has no price or
   elasticity data, so it does not propose discounts or predict their effect.
+
+## ADR-034 Multiple stock locations
+- A location (warehouse, store) has a code that is unique per organisation ignoring case, a name and an optional
+  address. Each organisation has exactly one default location (partial unique index); it is created as `MAIN` the
+  first time it is needed. `stock_levels` holds on hand and on order per product and location.
+- The product's `on_hand` and `on_order` stay as the totals, and every change to a level updates them in the same
+  transaction under the product row lock, so the sum of levels always equals the totals. Forecasting, recommendations,
+  risk and overstock keep reading the totals and are unchanged. Demand stays organisation-wide because sales (uploads
+  and Shopify) carry no location; per-location reorder suggestions would need location-level sales.
+- Products that had stock before locations existed are adopted lazily: their totals become the default location's
+  level the first time their levels are read or changed. Migration `0006` also backfills this for existing data.
+- With one active location, counts and inventory uploads work as before. With several, a count must name a location
+  and an upload needs a `location` column (aliases `location_code`, `warehouse`, `store`, `site`); otherwise the API
+  refuses rather than guessing. Upload rows are parsed in full before anything is applied, so a bad row changes nothing.
+- A transfer moves on-hand units between two active locations of one product under the product lock, so concurrent
+  transfers cannot oversell a location; it is recorded in `stock_transfers` and the audit log. Totals do not change.
+- A purchase order delivers to one location (the default unless chosen). Sending, receiving and cancelling move stock
+  at that location. A location cannot be deactivated while it is the default, holds stock or has open orders.
+- Managing locations is an admin action (`manage_settings`); counts and transfers need `manage_inventory`.

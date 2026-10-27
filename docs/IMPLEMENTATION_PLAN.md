@@ -77,7 +77,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Planner forecast overrides applied to decisions and scored against actuals (forecast value added, ADR-032)
 - [x] Overstock and dead-stock report (ADR-033)
 - [ ] E-mailing purchase orders to suppliers (needs an e-mail provider)
-- [ ] Next roadmap items: multi-location stock, product hierarchy forecasts, scheduled reports
+- [x] Multiple stock locations: per-location counts and uploads, transfers, purchase order delivery location (ADR-034)
+- [ ] Next roadmap items: product hierarchy forecasts, scheduled reports; per-location demand needs sales by location
 
 ## Follow-ups
 - [x] Build and run images in CI

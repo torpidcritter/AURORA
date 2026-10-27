@@ -15,6 +15,7 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
   probability, urgency, a risk matrix and what-if scenarios; an overstock and dead-stock report.
 - **Purchasing:** suppliers, purchase orders from draft to received (with approval, partial receipts and CSV export),
   and drafts built from the reorder suggestions.
+- **Locations:** stock per warehouse or store, transfers between them, and a delivery location on purchase orders.
 - **Planner overrides:** adjust the forecast used for decisions over a date range, and see whether each adjustment
   beat the model once actual sales arrive.
 - **Operations:** background training and batch forecasting, a model registry with a promotion gate and rollback,

@@ -17,11 +17,11 @@ production-proven.
 
 | Suite | Command | Result (2026-10-27) |
 |---|---|---|
-| Backend unit + integration + platform flow | `pytest -q` (PostgreSQL, fakeredis, eager Celery) | **360 passed** |
+| Backend unit + integration + platform flow | `pytest -q` (PostgreSQL, fakeredis, eager Celery) | **373 passed** |
 | Backend lint / migrations / deps | `ruff check`, `ruff format --check`, `alembic check`, `pip-audit` | clean (CI) |
-| Frontend unit | `npm test` (Vitest) | **148 passed** |
+| Frontend unit | `npm test` (Vitest) | **154 passed** |
 | Frontend static | `npm run typecheck`, `npm run lint`, `npm run build`, `npm audit --audit-level=high` | clean |
-| Browser E2E | `npx playwright test` against the built frontend, API, live Celery worker and Redis | 11 tests (CI; all 11 also passed locally on 2026-10-27) |
+| Browser E2E | `npx playwright test` against the built frontend, API, live Celery worker and Redis | 12 tests (CI; all 12 also passed locally on 2026-10-27) |
 | Containers | CI `containers` job (images, Compose, restricted DB role, MinIO, smoke test, Locust smoke) | see PR checks |
 | Secret scan | `python scripts/secret_scan.py` over tracked files (CI job) | no findings |
 
@@ -35,7 +35,7 @@ How to run each suite: `docs/TESTING.md`.
 | Auth: login, no user enumeration, expired/forged/`alg=none` tokens, refresh rotation and reuse detection, lockout, per-email, per-IP and per-user rate limits, sessions invalidated on role or password change | `tests/integration/test_auth.py` |
 | Admin-issued one-time reset links: hashed token, fragment-only URL, single use under concurrency, expiry, superseded by new links, deactivation or password change, own account refused, generic failure message, audit | `tests/integration/test_password_reset.py`, `aurora-frontend/tests/password-reset.test.tsx` |
 | RBAC: every route × 4 roles + anonymous, and a check that no route is missing from the matrix | `test_rbac_matrix.py` |
-| Tenant isolation for products, jobs, alerts, users, settings, suppliers, purchase orders, overrides, the overstock report, assistant tools and Shopify shops | integration tests in each area, and step 10 of the platform flow |
+| Tenant isolation for products, jobs, alerts, users, settings, suppliers, purchase orders, overrides, the overstock report, locations and transfers, assistant tools and Shopify shops | integration tests in each area, and step 10 of the platform flow |
 | Per-organisation settings: strict validation, admin-only writes, row-locked updates, audit, effective values used by inventory, monitoring and alert routing | `tests/integration/test_org_settings.py`, `aurora-frontend/tests/settings.test.tsx` |
 | Whole platform in one run: bootstrap, team, upload with quality report, training, registry, forecasts, recommendations, scenarios, alerts and acknowledgement, assistant fallback, audit trail, second tenant isolated | `tests/e2e/test_full_platform_flow.py` |
 | Ingestion: sniffing, size/row limits, zip-bomb guard, column mapping, validation, idempotent re-upload, quality score, per-user upload limit | `test_ingestion.py`, `test_datasets.py`, `test_auth.py` |
@@ -52,6 +52,7 @@ How to run each suite: `docs/TESTING.md`.
 | Assistant panel, upload wizard gating, model health and live accuracy views | `aurora-frontend/tests/{chat,wizard,health,live-accuracy}.test.tsx` |
 | Suppliers and purchase orders: unique names, version guards, supplier lead-time fallback, full lifecycle with stock movement, partial receipt, cancel releasing only outstanding stock, approval permission, concurrent sends applied once, distinct order numbers under concurrency, drafts from suggestions grouped by supplier and skipping busy products, CSV formula neutralising, audit | `tests/integration/test_purchasing.py`, `aurora-frontend/tests/purchasing.test.tsx`, Playwright purchasing flow |
 | Forecast overrides: set/scale application, validation, no overlaps, archive, use in recommendations and next to the forecast, forecast value added against actuals; overstock and dead-stock report | `tests/integration/test_overrides_overstock.py`, `aurora-frontend/tests/purchasing.test.tsx` |
+| Stock locations: legacy stock adopted into the default, levels always summing to the totals, counts and uploads requiring a location once there are several, transfers validated and never overselling under concurrency, location rules, purchase orders moving stock at their delivery location | `tests/integration/test_locations.py`, `aurora-frontend/tests/locations.test.tsx`, Playwright transfer flow |
 | Load test logic: pacing under rate limits, pass/fail gates | `unit/test_load_support.py`; local and CI Locust runs |
 | Secret scanner rules and allowlist | `unit/test_secret_scan.py` |
 
@@ -86,8 +87,10 @@ candidate by the promotion gate.
 - Transformer training is CPU-bound (about 2 minutes for 20 SKUs × 1 year). Large catalogues need a GPU or sampling.
 - `POST /inventory/upload` applies valid rows and reports invalid ones (row level, not all-or-nothing).
 - Secure cookies mean the production web image only works over HTTPS or on `localhost`.
-- Purchase orders are not e-mailed; "mark as sent" records that the user sent them (download the CSV). There is one
-  stock location per product, and receiving does not record lot, expiry or landed cost.
+- Purchase orders are not e-mailed; "mark as sent" records that the user sent them (download the CSV). Receiving does not
+  record lot, expiry or landed cost.
+- Stock is kept per location, but forecasts and reorder suggestions are organisation-wide because sales carry no
+  location.
 - Overstock suggestions are descriptive only; there is no price or elasticity model.
 - No penetration test or external security review has been done.
 
