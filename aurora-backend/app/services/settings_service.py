@@ -42,6 +42,7 @@ class EffectiveSettings:
     accuracy_live_metric: str
     accuracy_live_threshold: float
     alert_min_severity: str
+    audit_retention_days: int
     sources: dict[str, Source]
 
     def is_override(self, key: str) -> bool:

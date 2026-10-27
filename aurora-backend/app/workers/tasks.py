@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import get_settings
-from app.db.models import AuditEvent, Organization, Product
+from app.db.models import Organization, Product
 from app.db.session import get_sessionmaker
 from app.services import alert_service, job_service, maintenance, model_registry, monitoring_service, series
 from app.services.forecast_service import ForecastRequest, generate
@@ -230,12 +230,11 @@ def run_due_digests() -> dict:
 
 @celery_app.task(name="aurora.cleanup_audit_logs")
 def cleanup_audit_logs() -> int:
-    days = get_settings().audit_retention_days
     db = get_sessionmaker()()
     try:
-        res = db.execute(delete(AuditEvent).where(AuditEvent.created_at < datetime.now(UTC) - timedelta(days=days)))
-        db.commit()
-        return int(res.rowcount or 0)  # type: ignore[attr-defined]
+        counts = maintenance.purge_audit(db)
+        logger.info("purged old audit events", extra={"counts": counts})
+        return sum(counts.values())
     finally:
         db.close()
 

@@ -103,7 +103,7 @@ CI checks that the models and migrations agree (`alembic check`).
   Migrations `0002` and `0003` only add a table and columns; `0005` adds the supplier, purchase order and override
   tables and a nullable `products.supplier_id`, so code from before it still runs against the upgraded schema. `0006` adds locations, stock levels and transfers and
   backfills a `MAIN` location; product totals are kept, but downgrading drops the per-location detail. `0007` adds
-  the digest tables only. Before downgrading, restore the pre-upgrade backup rather
+  the digest tables only; `0008` adds a nullable `products.price_breaks` column. Before downgrading, restore the pre-upgrade backup rather
   than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.
@@ -210,7 +210,7 @@ Beat runs these daily; each can also be run by hand:
 | Task | Schedule | Manual command |
 |---|---|---|
 | Delete refresh tokens expired over a day ago, OAuth states expired over an hour ago, spent or expired password reset links over a day old, processed webhook ids older than `WEBHOOK_EVENT_RETENTION_DAYS` (30) | 03:30 UTC | `docker compose run --rm api python -m app.cli purge-expired` |
-| Delete audit events older than `AUDIT_RETENTION_DAYS` (365) | 03:15 UTC | none (task `aurora.cleanup_audit_logs`) |
+| Delete audit events older than each organisation's retention (Settings, default `AUDIT_RETENTION_DAYS` = 365); writes one `audit.retention_purge` event per organisation | 03:15 UTC | none (task `aurora.cleanup_audit_logs`) |
 | Mark jobs without a recent heartbeat as failed | every 10 minutes | none |
 
 ## 11. Shopify app setup

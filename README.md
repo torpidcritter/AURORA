@@ -15,14 +15,16 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Inventory:** safety stock, reorder point and quantity (pack size, MOQ), days until stock-out, stock-out
   probability, urgency, a risk matrix and what-if scenarios; an overstock and dead-stock report.
 - **Purchasing:** suppliers, purchase orders from draft to received (with approval, partial receipts and CSV export),
-  and drafts built from the reorder suggestions.
+  drafts built from the reorder suggestions, a budget planner that spends a fixed amount where it avoids the most
+  shortage, quantity price breaks, and supplier reliability (lead time, on-time and fill rate) measured from orders.
 - **Locations:** stock per warehouse or store, transfers between them, and a delivery location on purchase orders.
 - **Planner overrides:** adjust the forecast used for decisions over a date range, and see whether each adjustment
   beat the model once actual sales arrive.
 - **Digests:** daily or weekly summaries in the app, Slack, a webhook or e-mail.
 - **Operations:** background training and batch forecasting, a model registry with a promotion gate and rollback,
   drift and accuracy monitoring, deduplicated alerts.
-- **Access:** organisations (tenants), four roles enforced by the API, audit log, rate limits.
+- **Access:** organisations (tenants), four roles enforced by the API, an audit log with CSV/JSON Lines export and
+  per-organisation retention, rate limits.
 - **Integrations:** an assistant that answers questions with Claude over read-only, permission-checked tools (with a
   deterministic fallback), and Shopify install plus signed order webhooks.
 

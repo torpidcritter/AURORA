@@ -83,6 +83,7 @@ MATRIX = [
     ("POST", f"/alerts/{X}/resolve", None, "operator"),
     ("DELETE", f"/alerts/{X}", None, "admin"),
     ("GET", "/audit", None, "analyst"),
+    ("GET", "/audit/export", None, "analyst"),
     ("GET", "/ops/status", None, "analyst"),
     ("GET", "/settings/org", None, "viewer"),
     ("PATCH", "/settings/org", {"default_lead_time_days": 10}, "admin"),

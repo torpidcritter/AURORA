@@ -8,6 +8,7 @@ export const SETTING_GROUPS: { id: string; title: string; subtitle: string }[] =
   { id: "inventory", title: "Inventory defaults", subtitle: "Used for products that have no value of their own." },
   { id: "monitoring", title: "Monitoring", subtitle: "Thresholds for demand drift, model age and live forecast accuracy alerts." },
   { id: "alerts", title: "Alert notifications", subtitle: "Which open alerts are sent to the alert channels." },
+  { id: "data", title: "Data retention", subtitle: "How long records are kept before the nightly clean-up removes them." },
 ];
 
 const CHOICE_LABELS: Record<string, string> = {

@@ -88,3 +88,28 @@ export function errorMessage(e: unknown): string {
   }
   return e instanceof Error ? e.message : "Something went wrong";
 }
+
+/** Fetch a file from the API (for example an export) and return it with the server's file name. */
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`/api/proxy${path.startsWith("/") ? path : `/${path}`}`, { credentials: "same-origin", cache: "no-store" });
+  if (!res.ok) {
+    const err = await parseError(res);
+    if (err.status === 401) onUnauthorized?.();
+    throw err;
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "download";
+  return { blob: await res.blob(), filename };
+}
+
+/** Hand a downloaded file to the browser's save dialog. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

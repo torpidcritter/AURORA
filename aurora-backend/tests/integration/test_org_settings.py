@@ -35,6 +35,7 @@ KEYS = [
     "accuracy_live_metric",
     "accuracy_live_threshold",
     "alert_min_severity",
+    "audit_retention_days",
 ]
 
 

@@ -13,7 +13,9 @@ S3 storage is exercised against MinIO, and password reset, organisation settings
 test and a secret scan were added. The first roadmap round added suppliers, purchase orders (draft to received, with
 drafts from reorder suggestions), planner forecast overrides scored against actual sales, and an overstock report. The second added multiple stock
 locations with transfers and a delivery location on purchase orders, then category forecasts that add up to the
-product forecasts and scheduled digests to the app, Slack, webhooks or e-mail.
+product forecasts and scheduled digests to the app, Slack, webhooks or e-mail. The third round started with a
+budget planner for purchase orders, quantity price breaks, supplier reliability measured from purchase orders, and
+audit log export with per-organisation retention.
 
 It is suitable for a **staging trial on synthetic or consented data**. It is not yet ready for production use with
 real customer data: neither the Anthropic nor the Shopify integration has run against the real service, it has never

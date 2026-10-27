@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, require
 from app.api.routes.health import check_components
+from app.core import rate_limit
 from app.core.errors import NotFound, ValidationFailed
 from app.core.redis_client import get_redis
 from app.core.security import Perm
 from app.db.models import Alert, AuditEvent, Job, ModelVersion
 from app.db.session import get_db
 from app.schemas.common import Page
-from app.services import alert_service, audit, job_service, model_registry
+from app.services import alert_service, audit, audit_export, job_service, model_registry
 
 router = APIRouter(tags=["operations"])
 
@@ -366,38 +367,45 @@ def audit_log(
     actor: str | None = Query(None, max_length=320),
     outcome: Literal["success", "failure"] | None = None,
     since: datetime | None = None,
+    until: datetime | None = None,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     p: Principal = Depends(require(Perm.view_audit)),
     db: Session = Depends(get_db),
 ) -> Page[dict]:
-    q = select(AuditEvent).where(AuditEvent.org_id == p.org_id)
-    if action:
-        q = q.where(AuditEvent.action.startswith(action))
-    if actor:
-        q = q.where(AuditEvent.actor_email == actor.lower())
-    if outcome:
-        q = q.where(AuditEvent.outcome == outcome)
-    if since:
-        q = q.where(AuditEvent.created_at >= since)
-    total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
-    rows = db.scalars(q.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(limit).offset(offset)).all()
-    items = [
-        {
-            "id": e.id,
-            "created_at": e.created_at.isoformat(),
-            "action": e.action,
-            "actor_email": e.actor_email,
-            "resource_type": e.resource_type,
-            "resource_id": e.resource_id,
-            "outcome": e.outcome,
-            "ip": e.ip,
-            "request_id": e.request_id,
-            "details": e.details,
-        }
-        for e in rows
-    ]
-    return Page(items=items, total=total, limit=limit, offset=offset)
+    f = audit_export.AuditFilter(action=action, actor=actor, outcome=outcome, since=since, until=until)
+    total = audit_export.count(db, p.org_id, f)
+    q = audit_export.query(p.org_id, f).order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+    rows = db.scalars(q.limit(limit).offset(offset)).all()
+    return Page(items=[audit_export.event_out(e) for e in rows], total=total, limit=limit, offset=offset)
+
+
+@router.get("/audit/export")
+def audit_log_export(
+    format: Literal["csv", "jsonl"] = "csv",
+    action: str | None = Query(None, max_length=80),
+    actor: str | None = Query(None, max_length=320),
+    outcome: Literal["success", "failure"] | None = None,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    p: Principal = Depends(require(Perm.view_audit)),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Download matching audit events, oldest first (ADR-039). The export is itself recorded in the audit log."""
+    rate_limit.hit(f"audit-export:{p.org_id}", 10, 3600)
+    f = audit_export.AuditFilter(action=action, actor=actor, outcome=outcome, since=since, until=until)
+    body, n = audit_export.export(db, p.org_id, f, format)
+    audit.record_for(
+        db, p, "audit.export", resource_type="audit_log", details={"format": format, "rows": n, **f.as_dict()}
+    )
+    db.commit()
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    media = "application/x-ndjson" if format == "jsonl" else "text/csv; charset=utf-8"
+    return Response(
+        body,
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="aurora-audit-{stamp}.{format}"'},
+    )
 
 
 @router.get("/ops/status")

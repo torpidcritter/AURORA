@@ -107,3 +107,12 @@ class OrgSettings(BaseModel):
         "one is configured). All alerts stay visible in the app.",
         json_schema_extra=_extra("alerts"),
     )
+    audit_retention_days: StrictInt | None = Field(
+        None,
+        ge=30,
+        le=3650,
+        title="Audit log retention",
+        description="Audit events older than this are deleted by the nightly clean-up. Export the log first if you "
+        "need a longer record; lowering the value removes older events at the next run.",
+        json_schema_extra=_extra("data", "days"),
+    )

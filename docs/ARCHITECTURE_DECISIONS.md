@@ -399,3 +399,40 @@ The spec names files that do not exist here; the responsibilities live in these 
   response reports. The alternative policy funds whole suggestions in risk order.
 - Units of different products are weighted equally (expected units of demand served). There are no selling prices,
   so the planner does not maximise margin. Products without a unit cost cannot be budgeted and are listed.
+
+## ADR-038 Supplier price breaks and measured reliability
+- A product can carry up to 10 quantity price breaks (`products.price_breaks`, JSONB): from `min_qty` units the unit
+  cost is `unit_cost`. Each tier must start above the one before (and above 1) and be cheaper than it, and the base
+  unit cost must be set. A change of base cost that would break this is refused until the breaks are updated.
+  `PUT /products/{id}/price-breaks` needs `manage_purchasing`, uses the product version guard and is audited.
+- Purchase order lines without an explicit price use the tier for their quantity; an explicit price is kept.
+  Recommendations value the order at its tier price (`order_unit_cost`) and report the next break when reaching it
+  needs at most 50% more units. The hint is never applied: extra units have a holding and obsolescence cost the
+  planner should weigh. Overstock is still valued at the base cost. The budget planner (ADR-037) uses the base cost.
+- Supplier reliability is measured from purchase orders sent in the last 365 days (`GET /suppliers/performance`):
+  actual lead time (sent to received) with its mean and standard deviation, the share received on or before the
+  expected date, and the fill rate (units received over units ordered on received or cancelled orders).
+- Once a supplier has at least 3 received orders, the standard deviation of its lead times replaces the configured
+  lead-time variability in safety stock for its products, and the assumption list says so. An explicit
+  `lead_time_std_days` in the request still wins. With fewer deliveries the numbers are shown but not used, because
+  two points give an unreliable spread. Mean measured lead time is shown next to the stated one but does not replace
+  it automatically: a planner should decide whether a slow period is the new normal.
+- Limitations: receipts are timestamped when recorded in Aurora, so a late data entry looks like a late delivery;
+  partial receipts count the order's final receive time only; there is no supplier-specific price list beyond the
+  product's breaks.
+
+## ADR-039 Audit log export and retention per organisation
+- `GET /audit/export?format=csv|jsonl` (the `view_audit` permission, as for the list) returns the events matching the
+  list filters, now including an `until` bound, oldest first. An export holds at most 50,000 events; above that the
+  request is refused and the caller narrows the range, rather than receiving a silently truncated file. Exports are
+  built in memory, which bounds them at a few tens of megabytes. Each export is recorded as `audit.export` with its
+  filters and row count, and is limited to 10 per hour per organisation.
+- CSV cells that a spreadsheet would read as a formula are prefixed with `'` (actor e-mails and resource ids can be
+  user-influenced); `details` is written as compact JSON. JSON Lines keeps the original values.
+- Retention is an organisation setting (`audit_retention_days`, 30 to 3650 days) over the global
+  `AUDIT_RETENTION_DAYS` (365). The nightly `aurora.cleanup_audit_logs` task deletes each organisation's events older
+  than its value and writes one `audit.retention_purge` event saying how many were removed and up to when, so the gap
+  in the log is explained. Events without an organisation use the global value. The database role may delete audit
+  rows but never update them (ADR-024).
+- There is no legal hold or write-once archive. Organisations that must keep the log longer than 10 years, or keep it
+  tamper-evident, should export it regularly into their own archive.

@@ -46,7 +46,7 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByRole("table", { name: "Backtest metrics by method" })).toBeVisible();
     await expect(page.getByText(/Urgency \d+ \/ 100/)).toBeVisible();
     await page.getByLabel("Lead time (days)").fill("9");
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
     await expect(page.getByRole("definition").filter({ hasText: /^9 days$/ })).toBeVisible();
   });
@@ -150,6 +150,9 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByRole("button", { name: "Cancel order" })).toHaveCount(0); // fully received: nothing left to do
     const csv = await page.evaluate(async (href) => (await fetch(href)).text(), await page.getByRole("link", { name: "Download CSV" }).getAttribute("href") ?? "");
     expect(csv).toContain(supplier);
+    // The received order now counts towards the supplier's measured reliability.
+    await page.goto("/suppliers");
+    await expect(page.getByRole("row").filter({ hasText: supplier })).toContainText("1 delivery");
 
     await page.goto("/overstock");
     await expect(page.getByRole("heading", { name: "Overstock and dead stock" })).toBeVisible();
@@ -224,6 +227,15 @@ test.describe.serial("Aurora end to end", () => {
     await page.getByRole("button", { name: "Which products are at risk of stocking out?" }).click();
     await expect(page.getByText(/Stockout risk: \d+ critical/)).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText(/Built-in summary|Claude/).first()).toBeVisible();
+  });
+
+  test("the audit log exports as CSV and records the export", async () => {
+    await page.goto("/admin/audit");
+    await expect(page.getByRole("table", { name: "Audit events" })).toBeVisible();
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export CSV" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/^aurora-audit-.*\.csv$/);
+    await page.reload();
+    await expect(page.getByRole("table", { name: "Audit events" })).toContainText("audit.export");
   });
 
   test("logout clears the session", async () => {

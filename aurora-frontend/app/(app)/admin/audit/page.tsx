@@ -3,7 +3,9 @@
 import { useState } from "react";
 import useSWR from "swr";
 
-import { Badge, Card, EmptyState, ErrorState, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
+import { apiDownload, saveBlob } from "@/lib/api";
+import { auditParams, dateRangeError } from "@/lib/audit";
 import { fmtDateTime } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { AuditEvent, Page } from "@/lib/types";
@@ -15,18 +17,41 @@ export default function AuditPage() {
   const [action, setAction] = useState("");
   const [actor, setActor] = useState("");
   const [outcome, setOutcome] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [offset, setOffset] = useState(0);
-  const qs = new URLSearchParams({ limit: String(LIMIT), offset: String(offset) });
-  if (action.trim()) qs.set("action", action.trim());
-  if (actor.trim()) qs.set("actor", actor.trim());
-  if (outcome) qs.set("outcome", outcome);
-  const list = useSWR<Page<AuditEvent>>(can("view_audit") ? `/audit?${qs.toString()}` : null, { keepPreviousData: true });
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [exportErr, setExportErr] = useState<unknown>(null);
+  const rangeErr = dateRangeError(from, to);
+  const filters = auditParams({ action, actor, outcome, from, to });
+  const qs = new URLSearchParams(filters);
+  qs.set("limit", String(LIMIT));
+  qs.set("offset", String(offset));
+  const list = useSWR<Page<AuditEvent>>(can("view_audit") && !rangeErr ? `/audit?${qs.toString()}` : null, { keepPreviousData: true });
+
+  const exportAs = async (format: "csv" | "jsonl") => {
+    setExportErr(null);
+    setExporting(format);
+    try {
+      const params = new URLSearchParams(filters);
+      params.set("format", format);
+      const { blob, filename } = await apiDownload(`/audit/export?${params.toString()}`);
+      saveBlob(blob, filename);
+    } catch (e) {
+      setExportErr(e);
+    } finally {
+      setExporting(null);
+    }
+  };
 
   if (!can("view_audit")) return <Notice tone="warn">Your role cannot view the audit log.</Notice>;
 
   return (
     <>
-      <PageHeader title="Audit log" description="Security-relevant and data-changing actions in your organisation, newest first." />
+      <PageHeader
+        title="Audit log"
+        description="Security-relevant and data-changing actions in your organisation, newest first. Exports use the same filters, list events oldest first, hold up to 50,000 events and are themselves recorded here. Retention is set under Settings."
+      />
       <Card>
         <div className="mb-4 flex flex-wrap gap-3">
           <label className="sr-only" htmlFor="aa">Action prefix</label>
@@ -39,7 +64,21 @@ export default function AuditPage() {
             <option value="success">Success</option>
             <option value="failure">Failure</option>
           </Select>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            From (UTC)
+            <Input type="date" aria-label="From date" value={from} onChange={(e) => { setFrom(e.target.value); setOffset(0); }} className="w-40" />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            To
+            <Input type="date" aria-label="To date" value={to} onChange={(e) => { setTo(e.target.value); setOffset(0); }} className="w-40" />
+          </label>
+          <div className="ml-auto flex gap-2">
+            <Button variant="secondary" disabled={!!rangeErr} loading={exporting === "csv"} onClick={() => void exportAs("csv")}>Export CSV</Button>
+            <Button variant="secondary" disabled={!!rangeErr} loading={exporting === "jsonl"} onClick={() => void exportAs("jsonl")}>Export JSON Lines</Button>
+          </div>
         </div>
+        {rangeErr && <div className="mb-3"><Notice tone="warn">{rangeErr}</Notice></div>}
+        {exportErr != null && <div className="mb-3"><ErrorState error={exportErr} /></div>}
         {list.error ? (
           <ErrorState error={list.error} onRetry={() => list.mutate()} />
         ) : !list.data ? (

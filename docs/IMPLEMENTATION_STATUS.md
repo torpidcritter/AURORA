@@ -55,6 +55,9 @@ How to run each suite: `docs/TESTING.md`.
 | Stock locations: legacy stock adopted into the default, levels always summing to the totals, counts and uploads requiring a location once there are several, transfers validated and never overselling under concurrency, location rules, purchase orders moving stock at their delivery location | `tests/integration/test_locations.py`, `aurora-frontend/tests/locations.test.tsx`, Playwright transfer flow |
 | Category forecasts: categories with recent units, products adding up to the group for both reconciliation methods, recommendation following the lower backtest error, interval only on the group model, overrides flowing into the bottom-up total, stale and unsold products, group size cap, tenant isolation | `tests/integration/test_hierarchy.py`, `aurora-frontend/tests/hierarchy.test.tsx`, Playwright category forecast |
 | Digests: slot timing, schedule rules and version guard, SSRF checks (scheme, credentials, port, private and reserved addresses, Slack host), encrypted targets never returned or audited, e-mail only with SMTP configured (fake SMTP server), scheduler sending each slot once, failed and redirected deliveries recorded, Slack escaping, content of every section, tenant isolation | `tests/integration/test_digests.py`, `aurora-frontend/tests/digests.test.tsx`, Playwright digest flow |
+| Budget plan: expected shortage against simulation, order steps honouring pack size and MOQ, spend within the budget, the greedy policy never worse than funding by urgency, products without cost listed, category filter, drafts using the planned quantities, tenant isolation | `tests/integration/test_budget_plan.py`, `aurora-frontend/tests/budget.test.tsx`, Playwright budget flow |
+| Supplier terms: price-break rules, version guard and audit, purchase order lines priced by tier (explicit prices kept), base-cost changes guarded, recommendation tier price and next-break hint, measured lead time, on-time and fill rate over the window, measured spread raising safety stock only with 3+ deliveries and yielding to an explicit override, tenant isolation | `tests/integration/test_supplier_terms.py`, `aurora-frontend/tests/pricing.test.tsx` |
+| Audit export and retention: CSV and JSON Lines with filters and date range, own organisation only, formula cells neutralised, row cap, the export itself audited, retention per organisation with bounds, global default for others and system events, one purge note per organisation | `tests/integration/test_audit_export.py`, `aurora-frontend/tests/audit.test.ts`, Playwright audit export |
 | Load test logic: pacing under rate limits, pass/fail gates | `unit/test_load_support.py`; local and CI Locust runs |
 | Secret scanner rules and allowlist | `unit/test_secret_scan.py` |
 
@@ -97,6 +100,9 @@ candidate by the promotion gate.
   stack); there is no store level because sales carry no location.
 - Digests are not retried automatically after a failed send, and e-mail has only been tested against a fake SMTP
   server. Webhook targets are checked against private networks, but DNS rebinding needs an egress firewall to rule out.
+- The budget planner weighs every unit of demand equally (no selling prices or margins) and uses base unit costs.
+- Measured supplier lead times use the time a receipt was recorded in Aurora, so late data entry looks like a late
+  delivery.
 - Overstock suggestions are descriptive only; there is no price or elasticity model.
 - No penetration test or external security review has been done.
 
