@@ -177,7 +177,14 @@ def update_inventory(
 ) -> ProductOut:
     changes = body.model_dump(exclude_unset=True)
     product_service.update_inventory(db, p.org_id, product_id, dict(changes))
-    audit.record_for(db, p, "inventory.update", resource_type="product", resource_id=product_id, details=changes)
+    audit.record_for(
+        db,
+        p,
+        "inventory.update",
+        resource_type="product",
+        resource_id=product_id,
+        details=body.model_dump(mode="json", exclude_unset=True),
+    )
     db.commit()
     return product_service.product_out(db, p.org_id, product_id)
 

@@ -428,6 +428,7 @@ class PurchaseOrder(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"))
     supplier_name: Mapped[str | None] = mapped_column(String(200))  # kept as it was when the order was sent
+    location_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"))
     expected_date: Mapped[date | None] = mapped_column(Date)
     notes: Mapped[str | None] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")  # manual | suggested
@@ -493,6 +494,63 @@ class ForecastOverride(TimestampMixin, Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Location(TimestampMixin, Base):
+    """A place stock is kept (warehouse, store). Each organisation has exactly one default location."""
+
+    __tablename__ = "locations"
+    __table_args__ = (
+        Index("uq_locations_org_code", "org_id", func.lower(text("code")), unique=True),
+        Index("uq_locations_org_default", "org_id", unique=True, postgresql_where=text("is_default")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    code: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    address: Mapped[str | None] = mapped_column(Text)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class StockLevel(Base):
+    """Stock of one product at one location. ``Product.on_hand``/``on_order`` are kept equal to the sums."""
+
+    __tablename__ = "stock_levels"
+    __table_args__ = (
+        UniqueConstraint("product_id", "location_id", name="uq_stock_levels_product_location"),
+        CheckConstraint("on_hand >= 0 AND on_order >= 0", name="ck_stock_levels_nonneg"),
+        Index("ix_stock_levels_org_location", "org_id", "location_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False)
+    on_hand: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    on_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class StockTransfer(TimestampMixin, Base):
+    """A completed move of stock between two locations (a record; totals do not change)."""
+
+    __tablename__ = "stock_transfers"
+    __table_args__ = (
+        CheckConstraint("quantity > 0", name="ck_stock_transfers_qty"),
+        CheckConstraint("from_location_id <> to_location_id", name="ck_stock_transfers_distinct"),
+        Index("ix_stock_transfers_org_created", "org_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    from_location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False)
+    to_location_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("locations.id", ondelete="RESTRICT"), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str | None] = mapped_column(String(500))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
 __all__ = [
     "Base",
     "Organization",
@@ -518,4 +576,7 @@ __all__ = [
     "PurchaseOrder",
     "PurchaseOrderLine",
     "ForecastOverride",
+    "Location",
+    "StockLevel",
+    "StockTransfer",
 ]

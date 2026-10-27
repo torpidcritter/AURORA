@@ -126,6 +126,7 @@ def create_order(
         p.org_id,
         p.user_id,
         supplier_id=body.supplier_id,
+        location_id=body.location_id,
         lines=[ln.model_dump(exclude_unset=True) for ln in body.lines],
         expected_date=body.expected_date,
         notes=body.notes,

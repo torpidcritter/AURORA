@@ -106,6 +106,17 @@ MATRIX = [
     ),
     ("POST", f"/forecast-overrides/{X}/archive", None, "analyst"),
     ("GET", "/inventory/overstock", None, "viewer"),
+    ("GET", "/locations", None, "viewer"),
+    ("POST", "/locations", {"code": "WH2", "name": "Second"}, "admin"),
+    ("PATCH", f"/locations/{X}", {"expected_version": 1, "name": "x"}, "admin"),
+    ("GET", f"/products/{X}/stock", None, "viewer"),
+    ("GET", "/stock/transfers", None, "viewer"),
+    (
+        "POST",
+        "/stock/transfers",
+        {"product_id": X, "from_location_id": X, "to_location_id": X, "quantity": 1},
+        "operator",
+    ),
 ]
 
 PUBLIC = {
@@ -160,6 +171,7 @@ def test_every_route_is_in_the_matrix(app):
             "{supplier_id}",
             "{po_id}",
             "{override_id}",
+            "{location_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

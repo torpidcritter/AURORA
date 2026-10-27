@@ -91,6 +91,7 @@ class POLineIn(_Strict):
 
 class POCreate(_Strict):
     supplier_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = Field(None, description="Deliver to; defaults to the default location")
     expected_date: date | None = None
     notes: str | None = Field(None, max_length=2000)
     lines: list[POLineIn] = Field(default_factory=list, max_length=500)
@@ -99,6 +100,7 @@ class POCreate(_Strict):
 class POUpdate(_Strict):
     expected_version: int = Field(ge=1)
     supplier_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
     expected_date: date | None = None
     notes: str | None = Field(None, max_length=2000)
     lines: list[POLineIn] | None = Field(None, max_length=500)
@@ -132,3 +134,66 @@ class OverrideIn(_Strict):
     )
     value: float = Field(ge=0, allow_inf_nan=False)
     reason: str = Field(min_length=1, max_length=500)
+
+
+# --- locations --------------------------------------------------------------------------------------------------------
+
+_CODE = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$"
+
+
+class LocationIn(_Strict):
+    code: str = Field(
+        pattern=_CODE, description="Short unique code, used in inventory uploads (letters, digits, - _ .)"
+    )
+    name: str = Field(min_length=1, max_length=200)
+    address: str | None = Field(None, max_length=1000)
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
+
+    @field_validator("address")
+    @classmethod
+    def _addr(cls, v: str | None) -> str | None:
+        return _clean(v)
+
+
+class LocationUpdate(_Strict):
+    expected_version: int = Field(ge=1)
+    code: str | None = Field(None, pattern=_CODE)
+    name: str | None = Field(None, min_length=1, max_length=200)
+    address: str | None = Field(None, max_length=1000)
+    is_active: bool | None = None
+    is_default: Literal[True] | None = Field(None, description="Make this the default location (cannot be unset)")
+
+    @field_validator("code", "name")
+    @classmethod
+    def _required(cls, v: str | None) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("must not be blank")
+        return v
+
+    @field_validator("is_active")
+    @classmethod
+    def _active(cls, v: bool | None) -> bool:
+        if v is None:
+            raise ValueError("is_active must be true or false")
+        return v
+
+    @field_validator("address")
+    @classmethod
+    def _addr(cls, v: str | None) -> str | None:
+        return _clean(v)
+
+
+class TransferIn(_Strict):
+    product_id: uuid.UUID
+    from_location_id: uuid.UUID
+    to_location_id: uuid.UUID
+    quantity: int = Field(ge=1, le=10_000_000)
+    note: str | None = Field(None, max_length=500)

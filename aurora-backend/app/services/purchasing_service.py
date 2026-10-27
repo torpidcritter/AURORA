@@ -25,8 +25,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
-from app.db.models import Organization, Product, PurchaseOrder, PurchaseOrderLine, Supplier
-from app.services import inventory_service, settings_service
+from app.db.models import Location, Organization, Product, PurchaseOrder, PurchaseOrderLine, Supplier
+from app.services import inventory_service, settings_service, stock_service
 
 OPEN_UNSENT = ("draft", "approved")
 OPEN = ("draft", "approved", "sent", "partially_received")
@@ -186,6 +186,7 @@ def order_number(n: int) -> str:
 def order_out(db: Session, po: PurchaseOrder) -> dict:
     lines = _lines(db, po.id)
     supplier = db.get(Supplier, po.supplier_id) if po.supplier_id else None
+    location = db.get(Location, po.location_id) if po.location_id else None
     total = 0.0
     total_known = True
     out_lines = []
@@ -232,6 +233,9 @@ def order_out(db: Session, po: PurchaseOrder) -> dict:
         "supplier_name": po.supplier_name or (supplier.name if supplier else None),
         "supplier_email": supplier.email if supplier else None,
         "expected_date": po.expected_date.isoformat() if po.expected_date else None,
+        "location_id": str(po.location_id) if po.location_id else None,
+        "location_code": location.code if location else None,
+        "location_name": location.name if location else None,
         "notes": po.notes,
         "source": po.source,
         "created_by": str(po.created_by) if po.created_by else None,
@@ -350,6 +354,20 @@ def _set_lines(db: Session, org_id: uuid.UUID, po: PurchaseOrder, lines: list[di
             db.delete(row)
 
 
+def _delivery_location(db: Session, org_id: uuid.UUID, location_id: uuid.UUID | None):  # type: ignore[no-untyped-def]
+    """Where the goods will arrive: the given active location, or the organisation's default."""
+    if location_id is None:
+        return stock_service.default_location(db, org_id)
+    loc = stock_service.get_location(db, org_id, location_id)
+    if not loc.is_active:
+        raise ValidationFailed(f"Location {loc.code} is inactive")
+    return loc
+
+
+def _po_location_id(db: Session, po: PurchaseOrder) -> uuid.UUID:
+    return po.location_id or stock_service.default_location(db, po.org_id).id
+
+
 def create_order(
     db: Session,
     org_id: uuid.UUID,
@@ -360,7 +378,9 @@ def create_order(
     expected_date: date | None = None,
     notes: str | None = None,
     source: str = "manual",
+    location_id: uuid.UUID | None = None,
 ) -> PurchaseOrder:
+    location = _delivery_location(db, org_id, location_id)
     if supplier_id is not None:
         s = get_supplier(db, org_id, supplier_id)
         if not s.is_active:
@@ -374,6 +394,7 @@ def create_order(
         notes=notes,
         source=source,
         created_by=user_id,
+        location_id=location.id,
     )
     db.add(po)
     db.flush()
@@ -394,6 +415,8 @@ def update_draft(db: Session, org_id: uuid.UUID, po_id: uuid.UUID, changes: dict
         if sid is not None and not get_supplier(db, org_id, sid).is_active:
             raise ValidationFailed("This supplier is inactive")
         po.supplier_id = sid
+    if "location_id" in changes:
+        po.location_id = _delivery_location(db, org_id, changes.pop("location_id")).id
     if "lines" in changes:
         _set_lines(db, org_id, po, changes.pop("lines"))
     for k in ("expected_date", "notes"):
@@ -451,9 +474,10 @@ def send(db: Session, org_id: uuid.UUID, po_id: uuid.UUID, *, expected_version: 
     supplier = get_supplier(db, org_id, po.supplier_id) if po.supplier_id else None
     lines = [ln for ln, _ in _lines(db, po.id)]
     products = _lock_products(db, org_id, [ln.product_id for ln in lines])
+    loc_id = _po_location_id(db, po)
     for ln in lines:
         p = products[ln.product_id]
-        p.on_order += ln.quantity
+        stock_service.adjust(db, p, loc_id, on_order=ln.quantity)
         p.version += 1
     po.status, po.sent_at = "sent", _now()
     po.supplier_name = supplier.name if supplier else po.supplier_name
@@ -495,11 +519,11 @@ def receive(
                 details={"product_id": str(pid)},
             )
     products = _lock_products(db, org_id, list(todo))
+    loc_id = _po_location_id(db, po)
     for pid, qty in todo.items():
         ln, p = lines[pid], products[pid]
         ln.received_qty += qty
-        p.on_hand += qty
-        p.on_order = max(p.on_order - qty, 0)
+        stock_service.adjust(db, p, loc_id, on_hand=qty, on_order=-qty)
         p.inventory_known = True
         p.version += 1
     complete = all(ln.received_qty == ln.quantity for ln in lines.values())
@@ -518,11 +542,12 @@ def cancel(db: Session, org_id: uuid.UUID, po_id: uuid.UUID, *, expected_version
     if po.status in ("sent", "partially_received"):
         lines = [ln for ln, _ in _lines(db, po.id)]
         products = _lock_products(db, org_id, [ln.product_id for ln in lines])
+        loc_id = _po_location_id(db, po)
         for ln in lines:
             outstanding = ln.quantity - ln.received_qty
             if outstanding:
                 p = products[ln.product_id]
-                p.on_order = max(p.on_order - outstanding, 0)
+                stock_service.adjust(db, p, loc_id, on_order=-outstanding)
                 p.version += 1
     po.status, po.cancelled_at = "cancelled", _now()
     po.version += 1

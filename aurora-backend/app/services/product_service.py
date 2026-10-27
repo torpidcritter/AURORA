@@ -5,12 +5,13 @@ import uuid
 from datetime import date, timedelta
 
 import pandas as pd
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
-from app.db.models import Product, SalesRecord
+from app.db.models import Location, Product, SalesRecord
 from app.schemas.data import ProductOut
+from app.services import stock_service
 
 SORTABLE = {"sku", "name", "units_30d", "on_hand", "last_date", "category"}
 
@@ -115,26 +116,27 @@ def product_out(db: Session, org_id: uuid.UUID, product_id: uuid.UUID) -> Produc
 
 
 def update_inventory(db: Session, org_id: uuid.UUID, product_id: uuid.UUID, changes: dict) -> Product:
-    """Atomic compare-and-set on `version`, so concurrent edits cannot silently overwrite each other."""
-    get_product(db, org_id, product_id)
+    """Compare-and-set on ``version`` under a row lock, so concurrent edits cannot silently overwrite each other.
+
+    On-hand and on-order are counts at one location (``location_id``; optional while the organisation has a single
+    active location); the product totals follow from the per-location levels.
+    """
     expected = changes.pop("expected_version")
-    values = {k: v for k, v in changes.items() if v is not None}
-    if "on_hand" in values or "on_order" in values:
-        values["inventory_known"] = True
-    values["version"] = Product.version + 1
-    res = db.execute(
-        update(Product)
-        .where(and_(Product.id == product_id, Product.org_id == org_id, Product.version == expected))
-        .values(**values)
-        .returning(Product.id)
-    )
-    if res.first() is None:
-        db.rollback()
+    location_id = changes.pop("location_id", None)
+    p = stock_service.lock_product(db, org_id, product_id)
+    if p.version != expected:
         raise Conflict("The product was modified by someone else. Reload and try again.")
+    values = {k: v for k, v in changes.items() if v is not None}
+    stock = {k: values.pop(k) for k in ("on_hand", "on_order") if k in values}
+    for k, v in values.items():
+        setattr(p, k, v)
+    if stock:
+        loc = stock_service.resolve_location(db, org_id, location_id, purpose="a stock count")
+        stock_service.set_level(db, p, loc.id, **stock)
+        p.inventory_known = True
+    p.version += 1
     db.flush()
-    p = db.get(Product, product_id)
-    db.refresh(p)
-    return p  # type: ignore[return-value]
+    return p
 
 
 INVENTORY_ALIASES = {
@@ -143,6 +145,7 @@ INVENTORY_ALIASES = {
     "on_order": ["on_order", "incoming", "open_po_qty"],
     "lead_time_days": ["lead_time_days", "lead_time", "supplier_lead_time"],
     "unit_cost": ["unit_cost", "cost"],
+    "location": ["location", "location_code", "warehouse", "store", "site"],
 }
 
 
@@ -161,8 +164,28 @@ def import_inventory_snapshot(db: Session, org_id: uuid.UUID, data: bytes) -> di
             mapping[canon] = hit
     if "sku" not in mapping or "on_hand" not in mapping:
         raise ValidationFailed("Inventory file needs 'sku' and 'on_hand' columns", details={"found": list(df.columns)})
-    products = {p.sku: p for p in db.scalars(select(Product).where(Product.org_id == org_id))}
+    locations = {
+        loc.code.lower(): loc
+        for loc in db.scalars(select(Location).where(Location.org_id == org_id, Location.is_active.is_(True)))
+    }
+    fallback = None
+    if "location" not in mapping:
+        fallback = stock_service.resolve_location(
+            db, org_id, None, purpose="an inventory upload (add a location column)"
+        )
+    # Lock the organisation's products in id order (the order every stock change uses) for the whole import.
+    products = {
+        p.sku: p
+        for p in db.scalars(
+            select(Product)
+            .where(Product.org_id == org_id)
+            .order_by(Product.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    }
     updated, unknown, errors = 0, [], []
+    level_cache: dict = {}
     for i, row in df.iterrows():
         sku = str(row[mapping["sku"]]).strip()
         p = products.get(sku)
@@ -170,19 +193,33 @@ def import_inventory_snapshot(db: Session, org_id: uuid.UUID, data: bytes) -> di
             unknown.append(sku)
             continue
         try:
+            # Parse the whole row first, so a bad value in one column applies nothing from that row.
             on_hand = int(float(row[mapping["on_hand"]]))
             if on_hand < 0:
                 raise ValueError("negative")
-            p.on_hand = on_hand
+            on_order = None
             if "on_order" in mapping and str(row[mapping["on_order"]]).strip():
-                p.on_order = max(int(float(row[mapping["on_order"]])), 0)
+                on_order = max(int(float(row[mapping["on_order"]])), 0)
+            lt = None
             if "lead_time_days" in mapping and str(row[mapping["lead_time_days"]]).strip():
                 lt = int(float(row[mapping["lead_time_days"]]))
                 if not 1 <= lt <= 365:
                     raise ValueError("lead time out of range")
-                p.lead_time_days = lt
+            cost = None
             if "unit_cost" in mapping and str(row[mapping["unit_cost"]]).strip():
-                p.unit_cost = max(float(row[mapping["unit_cost"]]), 0.0)
+                cost = max(float(row[mapping["unit_cost"]]), 0.0)
+            if fallback is not None:
+                loc = fallback
+            else:
+                code = str(row[mapping["location"]]).strip().lower()
+                loc = locations.get(code)
+                if loc is None:
+                    raise ValueError(f"unknown or inactive location '{code[:40]}'")
+            stock_service.set_level(db, p, loc.id, on_hand=on_hand, on_order=on_order, cache=level_cache)
+            if lt is not None:
+                p.lead_time_days = lt
+            if cost is not None:
+                p.unit_cost = cost
             p.inventory_known = True
             p.version += 1
             updated += 1

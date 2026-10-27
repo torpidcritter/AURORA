@@ -21,7 +21,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.models import Organization, Product, User
 from app.db.session import session_scope
-from app.services import auth_service, dataset_service, maintenance, shopify_service
+from app.services import auth_service, dataset_service, maintenance, shopify_service, stock_service
 
 
 def bootstrap() -> None:
@@ -66,7 +66,9 @@ def seed_demo(products: int, days: int) -> None:
         rng = random.Random(5)
         for p in db.scalars(select(Product).where(Product.org_id == admin.org_id)):
             if not p.inventory_known:
-                p.on_hand = rng.randint(0, 900)
+                stock_service.set_level(
+                    db, p, stock_service.default_location(db, admin.org_id).id, on_hand=rng.randint(0, 900)
+                )
                 p.lead_time_days = rng.choice([3, 5, 7, 10, 14])
                 p.unit_cost = round(rng.uniform(1.5, 40), 2)
                 p.inventory_known = True

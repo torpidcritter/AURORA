@@ -64,6 +64,9 @@ class InventoryUpdate(BaseModel):
     pack_size: int | None = Field(default=None, ge=1, le=100_000)
     min_order_qty: int | None = Field(default=None, ge=0, le=10_000_000)
     missing_policy: Literal["zero", "interpolate"] | None = None
+    location_id: uuid.UUID | None = Field(
+        default=None, description="Where on_hand/on_order were counted; required when there are several locations"
+    )
 
 
 class HistoryPoint(BaseModel):
