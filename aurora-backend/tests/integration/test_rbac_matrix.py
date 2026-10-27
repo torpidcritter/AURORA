@@ -73,6 +73,39 @@ MATRIX = [
     ("GET", "/ops/status", None, "analyst"),
     ("GET", "/settings/org", None, "viewer"),
     ("PATCH", "/settings/org", {"default_lead_time_days": 10}, "admin"),
+    ("GET", "/suppliers", None, "viewer"),
+    ("POST", "/suppliers", {"name": "Acme"}, "operator"),
+    ("GET", f"/suppliers/{X}", None, "viewer"),
+    ("PATCH", f"/suppliers/{X}", {"expected_version": 1, "notes": "x"}, "operator"),
+    ("POST", "/suppliers/assign", {"supplier_id": None, "product_ids": [X]}, "operator"),
+    ("GET", "/purchase-orders", None, "viewer"),
+    ("POST", "/purchase-orders", {"lines": []}, "operator"),
+    ("POST", "/purchase-orders/suggest", {"product_ids": [X]}, "operator"),
+    ("GET", f"/purchase-orders/{X}", None, "viewer"),
+    ("GET", f"/purchase-orders/{X}/export.csv", None, "viewer"),
+    ("PATCH", f"/purchase-orders/{X}", {"expected_version": 1, "notes": "x"}, "operator"),
+    ("POST", f"/purchase-orders/{X}/approve", {"expected_version": 1}, "analyst"),
+    ("POST", f"/purchase-orders/{X}/send", {"expected_version": 1}, "operator"),
+    ("POST", f"/purchase-orders/{X}/receive", {"expected_version": 1}, "operator"),
+    ("POST", f"/purchase-orders/{X}/cancel", {"expected_version": 1}, "operator"),
+    ("DELETE", f"/purchase-orders/{X}?expected_version=1", None, "operator"),
+    ("GET", "/forecast-overrides", None, "viewer"),
+    ("GET", "/forecast-overrides/value-added", None, "viewer"),
+    (
+        "POST",
+        "/forecast-overrides",
+        {
+            "product_id": X,
+            "start_date": "2025-01-01",
+            "end_date": "2025-01-02",
+            "kind": "scale",
+            "value": 1.1,
+            "reason": "r",
+        },
+        "analyst",
+    ),
+    ("POST", f"/forecast-overrides/{X}/archive", None, "analyst"),
+    ("GET", "/inventory/overstock", None, "viewer"),
 ]
 
 PUBLIC = {
@@ -109,7 +142,7 @@ def test_permission_matrix(client, org, method, path, body, min_role):
 
 
 def test_every_route_is_in_the_matrix(app):
-    covered = {(m, p.replace(X, "{id}")) for m, p, _, _ in MATRIX}
+    covered = {(m, p.split("?")[0].replace(X, "{id}")) for m, p, _, _ in MATRIX}
     missing = []
     for route in app.routes:
         path = getattr(route, "path", "")
@@ -124,6 +157,9 @@ def test_every_route_is_in_the_matrix(app):
             "{job_id}",
             "{version_id}",
             "{alert_id}",
+            "{supplier_id}",
+            "{po_id}",
+            "{override_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

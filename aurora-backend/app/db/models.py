@@ -144,6 +144,7 @@ class Product(TimestampMixin, Base):
     inventory_known: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     pack_size: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     min_order_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), index=True)
     # How dates absent from uploads are treated when building the daily series:
     # "zero" = absence means no sales (typical POS exports); "interpolate" = absence means unknown.
     missing_policy: Mapped[str] = mapped_column(String(20), nullable=False, default="zero")
@@ -381,6 +382,117 @@ class WebhookEvent(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+PO_STATUSES = ("draft", "approved", "sent", "partially_received", "received", "cancelled")
+OVERRIDE_KINDS = ("set", "scale")
+
+
+class Supplier(TimestampMixin, Base):
+    """Who a product is bought from. Its lead time applies to products that have none of their own."""
+
+    __tablename__ = "suppliers"
+    __table_args__ = (
+        Index("uq_suppliers_org_name", "org_id", func.lower(text("name")), unique=True),
+        CheckConstraint(
+            "lead_time_days IS NULL OR (lead_time_days >= 1 AND lead_time_days <= 365)", name="ck_suppliers_lead"
+        ),
+        CheckConstraint("min_order_value IS NULL OR min_order_value >= 0", name="ck_suppliers_min_value"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    contact_name: Mapped[str | None] = mapped_column(String(200))
+    email: Mapped[str | None] = mapped_column(String(320))
+    phone: Mapped[str | None] = mapped_column(String(50))
+    lead_time_days: Mapped[int | None] = mapped_column(Integer)
+    min_order_value: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class PurchaseOrder(TimestampMixin, Base):
+    """A purchase order. Lines change only in draft; stock moves when it is sent (on order) and received (on hand)."""
+
+    __tablename__ = "purchase_orders"
+    __table_args__ = (
+        UniqueConstraint("org_id", "number", name="uq_purchase_orders_org_number"),
+        CheckConstraint(f"status IN {PO_STATUSES}", name="ck_purchase_orders_status"),
+        Index("ix_purchase_orders_org_status", "org_id", "status"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"))
+    supplier_name: Mapped[str | None] = mapped_column(String(200))  # kept as it was when the order was sent
+    expected_date: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")  # manual | suggested
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class PurchaseOrderLine(Base):
+    __tablename__ = "purchase_order_lines"
+    __table_args__ = (
+        UniqueConstraint("purchase_order_id", "product_id", name="uq_po_lines_order_product"),
+        CheckConstraint("quantity > 0", name="ck_po_lines_qty_pos"),
+        CheckConstraint("received_qty >= 0 AND received_qty <= quantity", name="ck_po_lines_received"),
+        CheckConstraint("unit_cost IS NULL OR unit_cost >= 0", name="ck_po_lines_cost"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("purchase_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_cost: Mapped[float | None] = mapped_column(Float)
+    received_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # What the reorder suggestion said when the line was drafted from it, for later review.
+    suggested_qty: Mapped[int | None] = mapped_column(Integer)
+    suggestion: Mapped[dict | None] = mapped_column(JSONB)
+
+
+class ForecastOverride(TimestampMixin, Base):
+    """A planner's adjustment to the statistical forecast for a date range: set units/day, or scale it.
+
+    Stored forecasts stay as the model made them; overrides are applied when forecasts are read for decisions, so the
+    model's and the planner's accuracy can both be scored against actual sales afterwards.
+    """
+
+    __tablename__ = "forecast_overrides"
+    __table_args__ = (
+        CheckConstraint(f"kind IN {OVERRIDE_KINDS}", name="ck_overrides_kind"),
+        CheckConstraint("end_date >= start_date", name="ck_overrides_dates"),
+        CheckConstraint("value >= 0", name="ck_overrides_value"),
+        Index("ix_overrides_org_product", "org_id", "product_id"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 __all__ = [
     "Base",
     "Organization",
@@ -402,4 +514,8 @@ __all__ = [
     "ShopifyShop",
     "OAuthState",
     "WebhookEvent",
+    "Supplier",
+    "PurchaseOrder",
+    "PurchaseOrderLine",
+    "ForecastOverride",
 ]

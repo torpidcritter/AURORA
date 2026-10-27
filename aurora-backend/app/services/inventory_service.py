@@ -9,23 +9,29 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ValidationFailed
-from app.db.models import Alert, Dataset, Product, SalesRecord
+from app.db.models import Alert, Dataset, Product, SalesRecord, Supplier
 from app.domain.inventory import InventoryInputError, InventoryInputs, compute
-from app.services import forecast_service, model_registry, series, settings_service
+from app.services import forecast_service, model_registry, override_service, series, settings_service
 from app.services.forecast_service import ForecastRequest
 from app.services.product_service import get_product, org_as_of
 from app.services.settings_service import EffectiveSettings
 
 
 def resolve_params(
-    product: Product, overrides: dict | None = None, defaults: EffectiveSettings | None = None
+    product: Product,
+    overrides: dict | None = None,
+    defaults: EffectiveSettings | None = None,
+    supplier_lead_days: int | None = None,
 ) -> tuple[dict, list[str]]:
-    """Request overrides, else the product's own values, else the organisation's defaults (``defaults``, from
-    settings_service.for_org; the global defaults when not given)."""
+    """Request overrides, else the product's own values, else its supplier's lead time, else the organisation's
+    defaults (``defaults``, from settings_service.for_org; the global defaults when not given)."""
     s = defaults or settings_service.resolve(None)
     o = overrides or {}
     assumptions = []
     lead = o.get("lead_time_days") or product.lead_time_days
+    if lead is None and supplier_lead_days is not None:
+        lead = supplier_lead_days
+        assumptions.append(f"Product lead time not set; the supplier's {lead} days used")
     if lead is None:
         lead = s.default_lead_time_days
         scope = "organisation default" if s.is_override("default_lead_time_days") else "default"
@@ -77,7 +83,13 @@ def recommendation(
     org_settings: EffectiveSettings | None = None,
 ) -> dict:
     product = get_product(db, org_id, product_id)
-    params, assumptions = resolve_params(product, overrides, org_settings or settings_service.for_org(db, org_id))
+    supplier = db.get(Supplier, product.supplier_id) if product.supplier_id else None
+    params, assumptions = resolve_params(
+        product,
+        overrides,
+        org_settings or settings_service.for_org(db, org_id),
+        supplier.lead_time_days if supplier is not None else None,
+    )
     base = {"product_id": str(product.id), "sku": product.sku, "name": product.name}
     if not product.inventory_known and (overrides or {}).get("on_hand") is None:
         return {
@@ -97,7 +109,18 @@ def recommendation(
             "message": "No sales history, so demand cannot be forecast.",
             "assumptions": assumptions,
         }
-    daily = forecast_override if forecast_override is not None else [p["yhat"] for p in fc["points"]]
+    applied: list[dict] = []
+    if forecast_override is not None:
+        daily = forecast_override
+    else:
+        # Planner overrides change the demand used for decisions; the stored model forecast is left as it was.
+        adjusted, applied = override_service.adjust_points(db, org_id, product.id, fc["points"])
+        daily = [p["yhat"] for p in adjusted]
+        if applied:
+            assumptions.append(
+                f"Planner override applied to {sum(a['days'] for a in applied)} forecast day(s): "
+                + "; ".join(a["reason"] for a in applied)
+            )
     sigma = float(fc.get("error_sd") or 0.0) * sigma_multiplier
     try:
         res = compute(InventoryInputs(forecast=daily, sigma_d=sigma, **params))
@@ -114,6 +137,7 @@ def recommendation(
         "on_hand": params["on_hand"],
         "on_order": params["on_order"],
         "forecast_method": fc["method"],
+        "overrides_applied": applied,
         "forecast_as_of": fc["as_of"],
         "sigma_source": fc.get("error_sd_source"),
         "order_value": round(res.recommended_order_qty * unit_cost, 2) if unit_cost is not None else None,

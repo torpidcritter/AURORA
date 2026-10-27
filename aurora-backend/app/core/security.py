@@ -37,11 +37,22 @@ class Perm(StrEnum):
     manage_integrations = "manage_integrations"
     view_ops = "view_ops"
     manage_settings = "manage_settings"  # organisation defaults, monitoring thresholds and alert routing
+    manage_purchasing = "manage_purchasing"  # suppliers; draft, send, receive and cancel purchase orders
+    approve_purchase_orders = "approve_purchase_orders"
+    manage_overrides = "manage_overrides"  # planner adjustments to the forecast
 
 
 _VIEWER = {Perm.read}
-_OPERATOR = _VIEWER | {Perm.upload_data, Perm.manage_inventory, Perm.acknowledge_alerts}
-_ANALYST = _OPERATOR | {Perm.train_models, Perm.tag_datasets, Perm.manage_signals, Perm.view_audit, Perm.view_ops}
+_OPERATOR = _VIEWER | {Perm.upload_data, Perm.manage_inventory, Perm.acknowledge_alerts, Perm.manage_purchasing}
+_ANALYST = _OPERATOR | {
+    Perm.train_models,
+    Perm.tag_datasets,
+    Perm.manage_signals,
+    Perm.view_audit,
+    Perm.view_ops,
+    Perm.approve_purchase_orders,
+    Perm.manage_overrides,
+}
 _ADMIN = set(Perm)
 
 ROLE_PERMISSIONS: dict[Role, frozenset[Perm]] = {

@@ -41,41 +41,14 @@ def live_accuracy(db: Session, org_id: uuid.UUID, window_days: int = 28) -> dict
         return _empty(window_days)
     newest = max(last_sale.values())
     start = newest - timedelta(days=window_days - 1)
-    runs = db.execute(
-        select(ForecastRun.product_id, ForecastRun.method, ForecastRun.payload, ForecastRun.created_at)
-        .where(
-            ForecastRun.org_id == org_id,
-            # a run can only cover the window if it was made less than (window + longest horizon) days ago
-            ForecastRun.created_at >= datetime.now(UTC) - timedelta(days=window_days + 120),
-        )
-        .order_by(ForecastRun.created_at)
-    ).all()
-
-    # (product, day) -> (as_of, created_at, yhat, method); keep the freshest forecast made before that day
-    best: dict[tuple[uuid.UUID, date], tuple[date, datetime, float, str]] = {}
-    for pid, method, payload, created in runs:
-        try:
-            as_of = date.fromisoformat(payload["as_of"])
-            points = payload["points"]
-        except (KeyError, TypeError, ValueError):
-            continue
-        cutoff = last_sale.get(pid)
-        if cutoff is None:
-            continue
-        for p in points:
-            d = date.fromisoformat(p["date"])
-            if d < start or d > cutoff or d <= as_of:
-                continue
-            cur = best.get((pid, d))
-            if cur is None or (as_of, created) > (cur[0], cur[1]):
-                best[(pid, d)] = (as_of, created, float(p["yhat"]), method)
+    best = _freshest(db, org_id, start, last_sale)
     if not best:
         return _empty(window_days)
 
     actuals = series.load_many(db, org_id, list({pid for pid, _ in best}))
     per_product: dict[uuid.UUID, tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
     per_method: dict[str, tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
-    for (pid, d), (_, _, yhat, method) in best.items():
+    for (pid, d), (yhat, method) in best.items():
         s = actuals.get(pid)
         if s is None:
             continue
@@ -103,6 +76,48 @@ def live_accuracy(db: Session, org_id: uuid.UUID, window_days: int = 28) -> dict
             key=lambda r: (r["wape"] is None, -(r["wape"] or 0)),
         ),
     }
+
+
+def served_forecasts(
+    db: Session, org_id: uuid.UUID, start: date, last_sale: dict[uuid.UUID, date]
+) -> dict[tuple[uuid.UUID, date], tuple[float, str]]:
+    """(product, day) -> (yhat, method) of the forecast a planner would have seen for that day: the freshest one made
+    before it. Days after the product's last uploaded sale are left out."""
+    return _freshest(db, org_id, start, last_sale)
+
+
+def _freshest(
+    db: Session, org_id: uuid.UUID, start: date, last_sale: dict[uuid.UUID, date]
+) -> dict[tuple[uuid.UUID, date], tuple[float, str]]:
+    window_days = (max(last_sale.values()) - start).days + 1 if last_sale else 0
+    runs = db.execute(
+        select(ForecastRun.product_id, ForecastRun.method, ForecastRun.payload, ForecastRun.created_at)
+        .where(
+            ForecastRun.org_id == org_id,
+            # a run can only cover the window if it was made less than (window + longest horizon) days ago
+            ForecastRun.created_at >= datetime.now(UTC) - timedelta(days=window_days + 120),
+        )
+        .order_by(ForecastRun.created_at)
+    ).all()
+    # (product, day) -> (as_of, created_at, yhat, method); keep the freshest forecast made before that day
+    best: dict[tuple[uuid.UUID, date], tuple[date, datetime, float, str]] = {}
+    for pid, method, payload, created in runs:
+        try:
+            as_of = date.fromisoformat(payload["as_of"])
+            points = payload["points"]
+        except (KeyError, TypeError, ValueError):
+            continue
+        cutoff = last_sale.get(pid)
+        if cutoff is None:
+            continue
+        for p in points:
+            d = date.fromisoformat(p["date"])
+            if d < start or d > cutoff or d <= as_of:
+                continue
+            cur = best.get((pid, d))
+            if cur is None or (as_of, created) > (cur[0], cur[1]):
+                best[(pid, d)] = (as_of, created, float(p["yhat"]), method)
+    return {k: (v[2], v[3]) for k, v in best.items()}
 
 
 def _score(y: list[float], f: list[float]) -> dict:

@@ -98,6 +98,7 @@ def _to_out(p: Product, first: date | None, last: date | None, units: float | No
         pack_size=p.pack_size,
         min_order_qty=p.min_order_qty,
         missing_policy=p.missing_policy,
+        supplier_id=p.supplier_id,
         version=p.version,
         first_date=first,
         last_date=last,

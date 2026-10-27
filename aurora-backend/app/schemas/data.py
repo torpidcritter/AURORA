@@ -45,6 +45,7 @@ class ProductOut(BaseModel):
     pack_size: int
     min_order_qty: int
     missing_policy: str
+    supplier_id: uuid.UUID | None = None
     version: int
     first_date: date | None = None
     last_date: date | None = None

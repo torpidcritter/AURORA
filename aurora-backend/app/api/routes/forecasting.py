@@ -25,6 +25,7 @@ from app.services import (
     explain_service,
     forecast_service,
     inventory_service,
+    override_service,
     scenario_service,
     series,
     settings_service,
@@ -45,6 +46,10 @@ def forecast(body: ForecastIn, p: Principal = Depends(require(Perm.read)), db: S
     _throttle(p, "forecast", 60)
     res = forecast_service.generate(db, p.org_id, ForecastRequest(**body.model_dump()))
     db.commit()
+    # Planner overrides are shown next to the model forecast, never written into it.
+    adjusted, applied = override_service.adjust_points(db, p.org_id, body.product_id, res["points"])
+    if applied:
+        res = {**res, "adjusted_points": adjusted, "overrides": applied}
     return res
 
 
