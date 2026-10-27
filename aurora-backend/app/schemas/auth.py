@@ -50,6 +50,7 @@ class MeOut(UserOut):
     permissions: list[str]
     org_name: str
     two_factor_required: bool = False  # the organisation requires it and this account has not set it up
+    org_deletion_due_at: str | None = None  # the organisation is scheduled for deletion (ADR-042)
 
 
 class PasswordConfirm(BaseModel):

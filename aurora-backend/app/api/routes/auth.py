@@ -76,6 +76,7 @@ def me(p: Principal = Depends(get_principal), db: Session = Depends(get_db)) -> 
         permissions=sorted(ROLE_PERMISSIONS[Role(user.role)]),
         org_name=org.name,
         two_factor_required=not user.two_factor_enabled and two_factor.org_requires(db, user.org_id),
+        org_deletion_due_at=(org.settings or {}).get("deletion", {}).get("due_at"),
     )
 
 

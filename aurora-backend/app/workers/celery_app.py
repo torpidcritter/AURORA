@@ -42,6 +42,7 @@ celery_app.conf.update(
         "reap-stale-jobs": {"task": "aurora.reap_stale_jobs", "schedule": 600.0},
         "cleanup-audit": {"task": "aurora.cleanup_audit_logs", "schedule": crontab(hour=3, minute=15)},
         "purge-expired": {"task": "aurora.purge_expired", "schedule": crontab(hour=3, minute=30)},
+        "purge-deleted-orgs": {"task": "aurora.purge_deleted_organisations", "schedule": crontab(hour=3, minute=45)},
         "nightly-batch-forecast": {"task": "aurora.batch_forecast_all", "schedule": crontab(hour=2, minute=0)},
     },
 )

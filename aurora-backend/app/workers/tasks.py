@@ -149,7 +149,17 @@ def _monitor(db, job) -> dict:  # type: ignore[no-untyped-def]
     return monitoring_service.run_for_org(db, job.org_id)
 
 
-HANDLERS = {"train": _train, "batch_forecast": _batch_forecast, "monitor": _monitor}
+def _data_export(db, job) -> dict:  # type: ignore[no-untyped-def]
+    from app.services import data_rights
+
+    def progress(fraction: float) -> None:
+        if job_service.heartbeat(db, job.id, fraction):
+            raise _Cancelled()
+
+    return data_rights.run_export_job(db, job, progress)
+
+
+HANDLERS = {"train": _train, "batch_forecast": _batch_forecast, "monitor": _monitor, "data_export": _data_export}
 
 
 @celery_app.task(name="aurora.run_training_job", acks_late=True)
@@ -239,11 +249,29 @@ def cleanup_audit_logs() -> int:
         db.close()
 
 
+@celery_app.task(name="aurora.purge_deleted_organisations")
+def purge_deleted_organisations() -> list[str]:
+    """Delete organisations whose scheduled deletion is due (ADR-042)."""
+    from app.services import data_rights
+
+    db = get_sessionmaker()()
+    try:
+        done = data_rights.purge_due_organisations(db)
+        if done:
+            logger.info("deleted organisations", extra={"extra_fields": {"count": len(done)}})
+        return done
+    finally:
+        db.close()
+
+
 @celery_app.task(name="aurora.purge_expired")
 def purge_expired() -> dict:
+    from app.services import data_rights
+
     db = get_sessionmaker()()
     try:
         counts = maintenance.purge_expired(db)
+        counts["data_exports"] = data_rights.expire_exports(db)
         logger.info("purged expired rows", extra={"counts": counts})
         return counts
     finally:
