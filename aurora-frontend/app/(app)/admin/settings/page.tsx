@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 
+import { DataExportCard, OrgDeletionCard } from "@/components/DataRights";
 import { OrgSettingsForm } from "@/components/OrgSettingsForm";
 import { ErrorState, LoadingBlock, PageHeader } from "@/components/ui";
 import { useSession } from "@/lib/session";
@@ -22,6 +23,12 @@ export default function SettingsPage() {
         <LoadingBlock rows={8} label="Loading settings" />
       ) : (
         <OrgSettingsForm data={s.data} canEdit={can("manage_settings")} onSaved={(updated) => s.mutate(updated, { revalidate: false })} />
+      )}
+      {can("manage_settings") && (
+        <div className="mt-6 grid gap-6 xl:grid-cols-2">
+          <DataExportCard />
+          <OrgDeletionCard />
+        </div>
       )}
     </>
   );

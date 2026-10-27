@@ -474,3 +474,26 @@ The spec names files that do not exist here; the responsibilities live in these 
   entered, a supplier, a trained model, a second user, a digest, and the viewer's two-factor login). Nothing is
   stored: a step is done when the data says so. The dashboard shows it until everything is done; hiding it is a
   per-browser preference.
+
+## ADR-042 Data export, account deletion and organisation deletion
+- An administrator (`manage_settings`) can export every business table of the organisation as one CSV per table
+  plus a `manifest.json`, in a ZIP built by the worker (`data_export` job) and kept in object storage for 7 days.
+  Columns holding secrets (password and token hashes, TOTP secrets, recovery codes, encrypted tokens and targets) are
+  never exported, and cells are written with the same spreadsheet-formula guard as the audit export (ADR-039). The ZIP
+  is built in memory, which is fine for the dataset sizes Aurora handles today; very large tenants would need a
+  streamed writer. Starting and downloading exports are audited and rate limited (3 per organisation per hour).
+- Every signed-in person can download what Aurora holds about them (`GET /auth/me/export`): profile, sessions,
+  sign-ins and the audit events in their name, as JSON.
+- Deleting a person's account (`DELETE /users/{id}`, `manage_users`) anonymises it instead of removing the row: the
+  e-mail becomes `deleted-<id>@deleted.invalid`, the name is cleared, the password is replaced with an unknown one,
+  two-factor data, sessions, reset links and pending invitations are removed, and the account can no longer be
+  changed or reactivated. Records the person made (orders, overrides, audit events) keep pointing at a valid row,
+  and the append-only audit log (the app role cannot UPDATE it) is not rewritten; audit events that mention the old
+  e-mail are removed by the organisation's audit retention (ADR-039). Administrators cannot delete themselves, and
+  the last active administrator cannot be deleted.
+- Deleting the whole organisation is a two-step process: an administrator types the organisation's exact name and
+  their password, which schedules deletion 7 days later (stored in `organizations.settings`, shown as a banner to
+  everyone, and cancellable by any administrator). A nightly Beat task (`aurora.purge_deleted_organisations`, 03:45
+  UTC) then deletes stored files, the organisation's audit events and the organisation row (all tenant tables
+  cascade), and writes one `organisation.deleted` event with no organisation id, so the deletion itself stays on
+  record. Backups are not touched; they age out under the backup retention (RUNBOOK).

@@ -83,6 +83,8 @@ def test_delete_a_user(client, org, db):
     r = client.post("/auth/login", json={"email": org.emails["viewer"], "password": PASSWORD})
     assert r.status_code == 401
     assert client.delete(f"/users/{viewer_id}", headers=org.h()).status_code == 409
+    # A deleted account cannot be reactivated or given a new role.
+    assert client.patch(f"/users/{viewer_id}", json={"is_active": True}, headers=org.h()).status_code == 409
     ev = db.scalars(select(AuditEvent).where(AuditEvent.action == "user.deleted")).one()
     assert ev.details["email"] == org.emails["viewer"]
 

@@ -15,7 +15,7 @@ drafts from reorder suggestions), planner forecast overrides scored against actu
 locations with transfers and a delivery location on purchase orders, then category forecasts that add up to the
 product forecasts and scheduled digests to the app, Slack, webhooks or e-mail. The third round started with a
 budget planner for purchase orders, quantity price breaks, supplier reliability measured from purchase orders, and
-audit log export with per-organisation retention, two-factor login with an authenticator app, and team invitations with a getting-started checklist.
+audit log export with per-organisation retention, two-factor login with an authenticator app, team invitations with a getting-started checklist, and data export with account and organisation deletion.
 
 It is suitable for a **staging trial on synthetic or consented data**. It is not yet ready for production use with
 real customer data: neither the Anthropic nor the Shopify integration has run against the real service, it has never
@@ -26,9 +26,9 @@ no external security review. The sections below give the evidence.
 
 | Check | Result |
 |---|---|
-| Backend tests (pytest, PostgreSQL), incl. the whole-platform flow | 398 passed |
-| Frontend unit tests (Vitest) | 161 passed |
-| Browser E2E (Playwright, live worker) | 14 passed locally; CI on PR #1 |
+| Backend tests (pytest, PostgreSQL), incl. the whole-platform flow | 452 passed |
+| Frontend unit tests (Vitest) | 184 passed |
+| Browser E2E (Playwright, live worker) | 19 passed locally; CI on PR #1 |
 | Containers: images, Compose stack, restricted DB role, MinIO, smoke test with training, Locust smoke | CI on PR #1 |
 | Lint, format, migration drift (`alembic check`), production build | clean |
 | Dependency audit (pip-audit, npm audit high) | CI on PR #1 |

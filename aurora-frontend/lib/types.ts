@@ -24,6 +24,7 @@ export interface Me {
   created_at: string;
   two_factor_enabled?: boolean;
   two_factor_required?: boolean;
+  org_deletion_due_at?: string | null;
 }
 
 export interface User {
@@ -800,4 +801,10 @@ export interface BudgetPlan {
   lines: BudgetLine[];
   unfunded: { product_id: string; sku: string; name: string; recommended_qty: number; reason: string }[];
   currency_note: string;
+}
+
+export interface DeletionSchedule {
+  requested_at: string;
+  due_at: string;
+  requested_by: string;
 }

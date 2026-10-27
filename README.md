@@ -25,7 +25,7 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
   drift and accuracy monitoring, deduplicated alerts.
 - **Access:** organisations (tenants), invitations by link, a getting-started checklist, four roles enforced by the API, optional or required two-factor login with
   an authenticator app, an audit log with CSV/JSON Lines export and
-  per-organisation retention, rate limits.
+  per-organisation retention, full data export, account deletion and scheduled organisation deletion, rate limits.
 - **Integrations:** an assistant that answers questions with Claude over read-only, permission-checked tools (with a
   deterministic fallback), and Shopify install plus signed order webhooks.
 

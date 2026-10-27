@@ -65,6 +65,12 @@ export default function UsersPage() {
     await list.mutate();
   };
 
+  const deleteUser = async (u: User) => {
+    setRowErr(null);
+    await api(`/users/${u.id}`, { method: "DELETE" });
+    await list.mutate();
+  };
+
   const issueResetLink = async (u: User) => {
     setRowErr(null);
     setResetLink(null);
@@ -118,6 +124,7 @@ export default function UsersPage() {
               <tbody>
                 {list.data.items.map((u) => {
                   const self = u.id === me?.id;
+                  const deleted = u.email.endsWith("@deleted.invalid");
                   return (
                     <tr key={u.id}>
                       <Td>
@@ -126,12 +133,12 @@ export default function UsersPage() {
                       </Td>
                       <Td>
                         <label className="sr-only" htmlFor={`role-${u.id}`}>Role for {u.email}</label>
-                        <Select id={`role-${u.id}`} value={u.role} disabled={self} onChange={(e) => void patch(u, { role: e.target.value as Role })} className="w-32">
+                        <Select id={`role-${u.id}`} value={u.role} disabled={self || deleted} onChange={(e) => void patch(u, { role: e.target.value as Role })} className="w-32">
                           {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                         </Select>
                       </Td>
                       <Td>
-                        {u.is_active ? <Badge tone="ok">active</Badge> : <Badge tone="warn">deactivated</Badge>}{" "}
+                        {deleted ? <Badge>deleted</Badge> : u.is_active ? <Badge tone="ok">active</Badge> : <Badge tone="warn">deactivated</Badge>}{" "}
                         {u.two_factor_enabled ? <Badge tone="info">2FA on</Badge> : <Badge>no 2FA</Badge>}
                       </Td>
                       <Td>{fmtDateTime(u.last_login_at)}</Td>
@@ -159,7 +166,7 @@ export default function UsersPage() {
                               Reset two-factor
                             </ConfirmButton>
                           )}
-                          {!self &&
+                          {!self && !deleted &&
                             (u.is_active ? (
                               <ConfirmButton
                                 title={`Deactivate ${u.email}?`}
@@ -172,6 +179,16 @@ export default function UsersPage() {
                             ) : (
                               <Button variant="ghost" onClick={() => void patch(u, { is_active: true })}>Reactivate</Button>
                             ))}
+                          {!self && !deleted && (
+                            <ConfirmButton
+                              title={`Delete the account of ${u.email}?`}
+                              body="Their name and e-mail are removed and they can never sign in again. Orders, overrides and other records they made stay with the organisation. This cannot be undone."
+                              confirmLabel="Delete account"
+                              onConfirm={() => deleteUser(u)}
+                            >
+                              Delete
+                            </ConfirmButton>
+                          )}
                         </div>
                       </Td>
                     </tr>

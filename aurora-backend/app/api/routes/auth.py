@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, client_ip, get_principal, require
-from app.core.errors import Forbidden
+from app.core.errors import Conflict, Forbidden
 from app.core.security import ROLE_PERMISSIONS, Perm, Role
 from app.db.models import Organization, User
 from app.db.session import get_db
@@ -296,6 +296,8 @@ def update_user(
 ) -> User:
     user = auth_service.get_org_user(db, p.org_id, user_id)
     changes = body.model_dump(exclude_unset=True)
+    if user.email.endswith("@deleted.invalid"):
+        raise Conflict("This account was deleted and cannot be changed")
     if user.id == p.user_id and (changes.get("role", user.role) != "admin" or changes.get("is_active") is False):
         raise Forbidden("You cannot demote or deactivate your own account")
     if "role" in changes and changes["role"] != user.role or changes.get("is_active") is False:

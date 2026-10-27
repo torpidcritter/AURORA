@@ -303,6 +303,29 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByRole("table", { name: "Audit events" })).toContainText("audit.export");
   });
 
+  test("an organisation export is built by the worker and downloads; deletion can be scheduled and cancelled", async () => {
+    await page.goto("/admin/settings");
+    await page.getByRole("button", { name: "Start export" }).click();
+    const table = page.getByRole("table", { name: "Organisation exports" });
+    await expect(table).toContainText("Ready", { timeout: 60_000 });
+    const [zip] = await Promise.all([page.waitForEvent("download"), table.getByRole("button", { name: "Download ZIP" }).first().click()]);
+    expect(zip.suggestedFilename()).toMatch(/\.zip$/);
+
+    const hint = await page.getByText(/^Type “.+” to confirm$/).innerText();
+    const orgName = hint.replace(/^Type “/, "").replace(/” to confirm$/, "");
+    await page.getByLabel("Organisation name", { exact: true }).fill(orgName);
+    await page.getByLabel("Your password", { exact: true }).fill(admin.password);
+    await page.getByRole("button", { name: "Schedule deletion in 7 days" }).click();
+    await expect(page.getByText(/This organisation will be deleted on/)).toBeVisible();
+    await page.getByRole("button", { name: "Cancel deletion" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Keep organisation" }).click();
+    await expect(page.getByText(/This organisation will be deleted on/)).toHaveCount(0);
+
+    await page.goto("/account");
+    const [mine] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download my data" }).click()]);
+    expect(mine.suggestedFilename()).toBe("aurora-my-data.json");
+  });
+
   test("logout clears the session", async () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: /sign out|log out/i }).click();

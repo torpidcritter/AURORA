@@ -37,6 +37,7 @@ import useSWR from "swr";
 
 import { ChatProvider } from "@/components/chat";
 import { ChatPanel, isChatPanelHidden } from "@/components/ChatPanel";
+import { DeletionBanner } from "@/components/DataRights";
 import { fetcher } from "@/lib/api";
 import { useSession } from "@/lib/session";
 
@@ -206,6 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </header>
           {/* Extra bottom padding keeps the assistant launcher from covering the end of the page. */}
           <main id="main" className={clsx("mx-auto w-full max-w-[1400px] px-4 pt-6 sm:px-6", isChatPanelHidden(pathname) ? "pb-6" : "pb-24")}>
+            {me?.org_deletion_due_at && <DeletionBanner dueAt={me.org_deletion_due_at} />}
             {children}
           </main>
         </div>

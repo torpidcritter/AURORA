@@ -17,11 +17,11 @@ production-proven.
 
 | Suite | Command | Result (2026-10-27) |
 |---|---|---|
-| Backend unit + integration + platform flow | `pytest -q` (PostgreSQL, fakeredis, eager Celery) | **398 passed** |
+| Backend unit + integration + platform flow | `pytest -q` (PostgreSQL, fakeredis, eager Celery) | **452 passed** |
 | Backend lint / migrations / deps | `ruff check`, `ruff format --check`, `alembic check`, `pip-audit` | clean (CI) |
-| Frontend unit | `npm test` (Vitest) | **161 passed** |
+| Frontend unit | `npm test` (Vitest) | **184 passed** |
 | Frontend static | `npm run typecheck`, `npm run lint`, `npm run build`, `npm audit --audit-level=high` | clean |
-| Browser E2E | `npx playwright test` against the built frontend, API, live Celery worker and Redis | 14 tests (CI; all 14 also passed locally on 2026-10-27) |
+| Browser E2E | `npx playwright test` against the built frontend, API, live Celery worker and Redis | 19 tests (CI; all 19 also passed locally on 2026-10-27) |
 | Containers | CI `containers` job (images, Compose, restricted DB role, MinIO, smoke test, Locust smoke) | see PR checks |
 | Secret scan | `python scripts/secret_scan.py` over tracked files (CI job) | no findings |
 
@@ -59,6 +59,7 @@ How to run each suite: `docs/TESTING.md`.
 | Supplier terms: price-break rules, version guard and audit, purchase order lines priced by tier (explicit prices kept), base-cost changes guarded, recommendation tier price and next-break hint, measured lead time, on-time and fill rate over the window, measured spread raising safety stock only with 3+ deliveries and yielding to an explicit override, tenant isolation | `tests/integration/test_supplier_terms.py`, `aurora-frontend/tests/pricing.test.tsx` |
 | Audit export and retention: CSV and JSON Lines with filters and date range, own organisation only, formula cells neutralised, row cap, the export itself audited, retention per organisation with bounds, global default for others and system events, one purge note per organisation | `tests/integration/test_audit_export.py`, `aurora-frontend/tests/audit.test.ts`, Playwright audit export |
 | Two-factor login: RFC 6238 test vectors, drift window and single use of each code, setup needing the password and a confirming code, encrypted secret and hashed single-use recovery codes, sign-in asking for and checking the code, lockout after bad codes, turning off, replacing codes, the organisation requirement blocking other endpoints, admin reset ending sessions, audit events | `tests/unit/test_totp.py`, `tests/integration/test_two_factor.py`, `aurora-frontend/tests/two-factor.test.tsx`, Playwright two-factor flow |
+| Data export and deletion: ZIP of every table with secrets left out and formula-safe cells, download limited to the organisation and to 7 days, personal JSON export, account anonymisation (sign-in blocked, sessions revoked, no reactivation, last-admin guard), organisation deletion scheduled with name and password, cancellable, purged by the nightly task with files and audit rows, other tenants untouched | `tests/integration/test_data_rights.py`, `aurora-frontend/tests/data-rights.test.tsx`, Playwright export and deletion flow |
 | Invitations and onboarding: invite, inspect, accept with the password policy, single use, re-invite withdrawing the pending link, withdraw, expiry, existing accounts refused, tenant isolation, e-mail only with SMTP configured, purge after 90 days, audit events; checklist steps following the data | `tests/integration/test_invites_onboarding.py`, `aurora-frontend/tests/invites.test.tsx`, Playwright invitation flow |
 | Load test logic: pacing under rate limits, pass/fail gates | `unit/test_load_support.py`; local and CI Locust runs |
 | Secret scanner rules and allowlist | `unit/test_secret_scan.py` |
