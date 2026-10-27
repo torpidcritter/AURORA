@@ -4,6 +4,7 @@ import Link from "next/link";
 import useSWR from "swr";
 
 import { TrendChart } from "@/components/charts";
+import { GettingStarted } from "@/components/GettingStarted";
 import { Badge, Card, EmptyState, ErrorState, LoadingBlock, PageHeader, RiskBadge, Stat } from "@/components/ui";
 import { fmtDate, fmtInt, fmtMoney, fmtPctPoints } from "@/lib/format";
 import type { ActionItem, Alert, Kpis, Page } from "@/lib/types";
@@ -21,6 +22,7 @@ export default function DashboardPage() {
         title="Dashboard"
         description={k?.as_of ? `Figures are relative to the latest sales date in your data: ${fmtDate(k.as_of)}.` : "Executive overview of demand, inventory risk and alerts."}
       />
+      <GettingStarted />
       {kpi.error ? (
         <ErrorState error={kpi.error} onRetry={() => kpi.mutate()} />
       ) : !k ? (

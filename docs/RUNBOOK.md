@@ -104,7 +104,7 @@ CI checks that the models and migrations agree (`alembic check`).
   tables and a nullable `products.supplier_id`, so code from before it still runs against the upgraded schema. `0006` adds locations, stock levels and transfers and
   backfills a `MAIN` location; product totals are kept, but downgrading drops the per-location detail. `0007` adds
   the digest tables only; `0008` adds a nullable `products.price_breaks` column; `0009` adds nullable two-factor columns to `users`
-  (downgrading drops them, which turns two-factor login off for everyone). Before downgrading, restore the pre-upgrade backup rather
+  (downgrading drops them, which turns two-factor login off for everyone); `0010` adds the `invitations` table. Before downgrading, restore the pre-upgrade backup rather
   than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.

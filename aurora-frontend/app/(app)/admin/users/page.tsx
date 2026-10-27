@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 
+import { InvitesCard } from "@/components/InvitesCard";
 import { ResetLinkPanel } from "@/components/ResetLinkPanel";
 import { TwoFactorPolicyCard } from "@/components/TwoFactor";
 import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, Field, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
@@ -74,7 +75,8 @@ export default function UsersPage() {
   return (
     <>
       <PageHeader title="Users" description="People in your organisation and what they can do. Role changes and deactivation sign the user out everywhere." />
-      <Card title="Add a user" className="mb-6">
+      <InvitesCard />
+      <Card title="Add a user" subtitle="Or create the account yourself with a starting password." className="mb-6">
         <form onSubmit={create} className="grid gap-3 md:grid-cols-5">
           <Field label="Email" htmlFor="ue"><Input id="ue" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} autoComplete="off" /></Field>
           <Field label="Full name" htmlFor="un"><Input id="un" value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} /></Field>

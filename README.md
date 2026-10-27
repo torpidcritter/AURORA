@@ -23,7 +23,7 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Digests:** daily or weekly summaries in the app, Slack, a webhook or e-mail.
 - **Operations:** background training and batch forecasting, a model registry with a promotion gate and rollback,
   drift and accuracy monitoring, deduplicated alerts.
-- **Access:** organisations (tenants), four roles enforced by the API, optional or required two-factor login with
+- **Access:** organisations (tenants), invitations by link, a getting-started checklist, four roles enforced by the API, optional or required two-factor login with
   an authenticator app, an audit log with CSV/JSON Lines export and
   per-organisation retention, rate limits.
 - **Integrations:** an assistant that answers questions with Claude over read-only, permission-checked tools (with a

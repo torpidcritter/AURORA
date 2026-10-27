@@ -37,6 +37,33 @@ export interface User {
   two_factor_enabled?: boolean;
 }
 
+/** An invitation to join the organisation. */
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  state: "pending" | "accepted" | "expired" | "revoked";
+  created_at: string | null;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
+/** One step of the getting-started checklist. */
+export interface OnboardingStep {
+  key: string;
+  title: string;
+  detail: string;
+  href: string;
+  done: boolean;
+}
+
+export interface Onboarding {
+  steps: OnboardingStep[];
+  done: number;
+  total: number;
+  complete: boolean;
+}
+
 /** Two-factor login state of the signed-in account. */
 export interface TwoFactorStatus {
   enabled: boolean;

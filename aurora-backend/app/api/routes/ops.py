@@ -17,10 +17,10 @@ from app.core import rate_limit
 from app.core.errors import NotFound, ValidationFailed
 from app.core.redis_client import get_redis
 from app.core.security import Perm
-from app.db.models import Alert, AuditEvent, Job, ModelVersion
+from app.db.models import Alert, AuditEvent, Job, ModelVersion, User
 from app.db.session import get_db
 from app.schemas.common import Page
-from app.services import alert_service, audit, audit_export, job_service, model_registry
+from app.services import alert_service, audit, audit_export, job_service, model_registry, onboarding_service
 
 router = APIRouter(tags=["operations"])
 
@@ -406,6 +406,14 @@ def audit_log_export(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="aurora-audit-{stamp}.{format}"'},
     )
+
+
+@router.get("/onboarding")
+def onboarding(p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> dict:
+    """Getting-started checklist for the organisation (and the signed-in user's own security step)."""
+    user = db.get(User, p.user_id)
+    assert user is not None
+    return onboarding_service.checklist(db, p.org_id, user)
 
 
 @router.get("/ops/status")

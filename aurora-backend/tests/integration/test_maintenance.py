@@ -76,7 +76,13 @@ def test_purge_expired_removes_only_dead_rows(client, org, db):
 
     counts = maintenance.purge_expired(db, now=now)
 
-    assert counts == {"refresh_tokens": 1, "oauth_states": 1, "password_reset_tokens": 2, "webhook_events": 1}
+    assert counts == {
+        "refresh_tokens": 1,
+        "oauth_states": 1,
+        "password_reset_tokens": 2,
+        "webhook_events": 1,
+        "invitations": 0,
+    }
     assert db.scalar(select(func.count()).select_from(RefreshToken)) == live_before + 2
     assert set(db.scalars(select(OAuthState.state))) == {"new"}
     assert set(db.scalars(select(WebhookEvent.external_id))) == {"recent"}

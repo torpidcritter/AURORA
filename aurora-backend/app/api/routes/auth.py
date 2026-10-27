@@ -12,6 +12,9 @@ from app.core.security import ROLE_PERMISSIONS, Perm, Role
 from app.db.models import Organization, User
 from app.db.session import get_db
 from app.schemas.auth import (
+    InviteAccept,
+    InviteCreate,
+    InviteToken,
     LoginRequest,
     MeOut,
     PasswordChange,
@@ -29,7 +32,7 @@ from app.schemas.auth import (
     UserUpdate,
 )
 from app.schemas.common import Page
-from app.services import audit, auth_service, two_factor
+from app.services import audit, auth_service, invite_service, two_factor
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 users_router = APIRouter(prefix="/users", tags=["users"])
@@ -216,6 +219,58 @@ def reset_two_factor(
     auth_service.revoke_all_for_user(db, user.id, "two_factor_reset")
     audit.record_for(db, p, "user.two_factor_reset", resource_type="user", resource_id=user.id)
     db.commit()
+
+
+# --- invitations (ADR-041) -----------------------------------------------------------------------------------------
+
+
+@users_router.post("/invites", status_code=201)
+def create_invite(
+    body: InviteCreate, p: Principal = Depends(require(Perm.manage_users)), db: Session = Depends(get_db)
+) -> dict:
+    """Invite someone by e-mail. The link is returned once (and e-mailed when SMTP is configured)."""
+    inv, link, emailed = invite_service.create(
+        db, org_id=p.org_id, email=str(body.email), role=body.role, created_by=p.user_id
+    )
+    audit.record_for(
+        db,
+        p,
+        "user.invited",
+        resource_type="invitation",
+        resource_id=inv.id,
+        details={"email": inv.email, "role": inv.role, "emailed": emailed},
+    )
+    db.commit()
+    return {**invite_service.invite_out(inv), "invite_url": link, "emailed": emailed}
+
+
+@users_router.get("/invites")
+def list_invites(p: Principal = Depends(require(Perm.manage_users)), db: Session = Depends(get_db)) -> list[dict]:
+    return invite_service.list_for_org(db, p.org_id)
+
+
+@users_router.delete("/invites/{invite_id}", status_code=204)
+def revoke_invite(
+    invite_id: uuid.UUID, p: Principal = Depends(require(Perm.manage_users)), db: Session = Depends(get_db)
+) -> None:
+    inv = invite_service.revoke(db, p.org_id, invite_id)
+    audit.record_for(db, p, "user.invite_revoked", resource_type="invitation", resource_id=inv.id)
+    db.commit()
+
+
+@router.post("/invite/inspect")
+def inspect_invite(body: InviteToken, request: Request, db: Session = Depends(get_db)) -> dict:
+    """Public: who an invitation link is for, so the accept page can show it."""
+    return invite_service.inspect(db, body.token, client_ip(request))
+
+
+@router.post("/invite/accept", status_code=201)
+def accept_invite(body: InviteAccept, request: Request, db: Session = Depends(get_db)) -> dict:
+    """Public: create the invited account with a password of the invitee's choosing. They then sign in."""
+    user = invite_service.accept(
+        db, body.token, full_name=body.full_name, password=body.password, ip=client_ip(request)
+    )
+    return {"email": user.email}
 
 
 @users_router.get("", response_model=Page[UserOut])

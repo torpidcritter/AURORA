@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PUBLIC = ["/login", "/reset-password", "/api/", "/_next/", "/favicon", "/robots.txt"];
+const PUBLIC = ["/login", "/reset-password", "/accept-invite", "/api/", "/_next/", "/favicon", "/robots.txt"];
 
 /** Redirect unauthenticated page requests to /login. This is a UX guard only:
  *  every API call is authorised by the backend. */

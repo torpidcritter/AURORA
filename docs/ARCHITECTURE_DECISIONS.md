@@ -458,3 +458,19 @@ The spec names files that do not exist here; the responsibilities live in these 
   (`403 two_factor_required`), and the web app sends such users to the account page. It cannot be turned off while
   required.
 - Not included: WebAuthn/passkeys, remembering a device, and SMS or e-mail codes (no provider, and SMS is weak).
+
+## ADR-041 Team invitations and the getting-started checklist
+- An administrator invites an e-mail address with a role (`POST /users/invites`). The invitee opens a one-time link
+  (`/accept-invite#token=...`, valid 7 days) and chooses their own name and password, so no administrator ever
+  knows or transmits a password. Creating an account directly with a starting password is still possible.
+- Tokens are 256-bit random values stored as SHA-256 hashes, like reset links (ADR-029). The token lives in the URL
+  fragment, which never reaches a server or a Referer header, and the page removes it from the address bar. A new
+  invitation for the same address withdraws the pending one; an administrator can withdraw one; an address that
+  already has an account cannot be invited. Inspect and accept are public and rate limited per client address.
+- When SMTP is configured (ADR-036) the link is also e-mailed; either way the administrator sees it once, so it
+  works without an e-mail provider. Invitations, acceptances and withdrawals are audited. Rows are deleted 90 days
+  after they stopped working; the audit log keeps the history.
+- `GET /onboarding` derives a getting-started checklist from the organisation's own data (sales uploaded, stock
+  entered, a supplier, a trained model, a second user, a digest, and the viewer's two-factor login). Nothing is
+  stored: a step is done when the data says so. The dashboard shows it until everything is done; hiding it is a
+  per-browser preference.

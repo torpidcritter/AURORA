@@ -10,7 +10,15 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.db.models import AuditEvent, OAuthState, Organization, PasswordResetToken, RefreshToken, WebhookEvent
+from app.db.models import (
+    AuditEvent,
+    Invitation,
+    OAuthState,
+    Organization,
+    PasswordResetToken,
+    RefreshToken,
+    WebhookEvent,
+)
 from app.services import audit, settings_service
 
 # Revoked or rotated refresh tokens are kept until they expire: reuse detection needs them. After expiry a reused
@@ -19,6 +27,7 @@ REFRESH_GRACE = timedelta(days=1)
 OAUTH_STATE_GRACE = timedelta(hours=1)
 # Spent or expired reset links are kept a day so a support question about "my link did not work" can be answered.
 RESET_LINK_GRACE = timedelta(days=1)
+INVITATION_GRACE = timedelta(days=90)
 
 
 def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
@@ -44,6 +53,9 @@ def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
         )
     )
     counts["webhook_events"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
+    # Invitations: the audit log keeps who invited whom; the rows themselves go 90 days after they stopped working.
+    res = db.execute(delete(Invitation).where(Invitation.expires_at < now - INVITATION_GRACE))
+    counts["invitations"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
     db.commit()
     return counts
 

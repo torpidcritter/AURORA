@@ -22,6 +22,9 @@ MATRIX = [
     ("POST", "/auth/two-factor/recovery-codes", {"code": "123456"}, "viewer"),
     ("PUT", "/auth/two-factor/policy", {"required": False}, "admin"),
     ("POST", f"/users/{X}/two-factor/reset", None, "admin"),
+    ("POST", "/users/invites", {"email": "new@example.com", "role": "viewer"}, "admin"),
+    ("GET", "/users/invites", None, "admin"),
+    ("DELETE", f"/users/invites/{X}", None, "admin"),
     ("GET", "/users", None, "admin"),
     ("PATCH", f"/users/{X}", {"full_name": "x"}, "admin"),
     ("POST", f"/users/{X}/password", {"new_password": "Xx-123456789"}, "admin"),
@@ -91,6 +94,7 @@ MATRIX = [
     ("DELETE", f"/alerts/{X}", None, "admin"),
     ("GET", "/audit", None, "analyst"),
     ("GET", "/audit/export", None, "analyst"),
+    ("GET", "/onboarding", None, "viewer"),
     ("GET", "/ops/status", None, "analyst"),
     ("GET", "/settings/org", None, "viewer"),
     ("PATCH", "/settings/org", {"default_lead_time_days": 10}, "admin"),
@@ -149,6 +153,8 @@ PUBLIC = {
     "/auth/refresh",
     "/auth/logout",
     "/auth/password-reset",
+    "/auth/invite/inspect",
+    "/auth/invite/accept",
     "/docs",
     "/openapi.json",
     "/docs/oauth2-redirect",
@@ -195,6 +201,7 @@ def test_every_route_is_in_the_matrix(app):
             "{location_id}",
             "{schedule_id}",
             "{digest_id}",
+            "{invite_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

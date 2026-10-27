@@ -108,6 +108,26 @@ class PasswordResetToken(TimestampMixin, Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Invitation(TimestampMixin, Base):
+    """A one-time link that lets someone create their own account in an organisation (ADR-041). Only the token's
+    SHA-256 is stored; the link is shown to the inviting admin once (and e-mailed when SMTP is configured)."""
+
+    __tablename__ = "invitations"
+    __table_args__ = (CheckConstraint(f"role IN {ROLES}", name="ck_invitations_role"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
 class Dataset(TimestampMixin, Base):
     __tablename__ = "datasets"
     __table_args__ = (UniqueConstraint("org_id", "sha256", name="uq_datasets_org_sha"),)

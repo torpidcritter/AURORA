@@ -222,6 +222,30 @@ test.describe.serial("Aurora end to end", () => {
     await ctx.close();
   });
 
+  test("an invited person creates their own account and signs in", async ({ browser }) => {
+    await page.goto("/admin/users");
+    const email = `invitee.${Date.now()}@example.com`;
+    await page.getByLabel("Invitee e-mail").fill(email);
+    await page.getByLabel("Invitee role").selectOption("operator");
+    await page.getByRole("button", { name: "Send invitation" }).click();
+    const url = await page.getByLabel("Invitation link", { exact: true }).inputValue();
+    expect(url).toContain("/accept-invite#token=");
+    await expect(page.getByRole("table", { name: "Invitations" })).toContainText(email);
+
+    const ctx = await browser.newContext();
+    const ip = await ctx.newPage();
+    await ip.goto(`/accept-invite#${url.split("#")[1]}`);
+    await expect(ip.getByText(/as operator/)).toBeVisible();
+    await ip.getByLabel("Your name").fill("Invited Person");
+    await ip.getByLabel("Choose a password").fill("Invitee-E2E-pass1");
+    await ip.getByLabel("Repeat the password").fill("Invitee-E2E-pass1");
+    await ip.getByRole("button", { name: "Create my account" }).click();
+    await expect(ip.getByText(`Your account ${email} is ready`)).toBeVisible();
+    await login(ip, email, "Invitee-E2E-pass1");
+    await expect(ip.getByText("Getting started")).toBeVisible();
+    await ctx.close();
+  });
+
   test("a user turns on two-factor login and then needs a code to sign in", async ({ browser }) => {
     await page.goto("/admin/users");
     const email = `twofactor.${Date.now()}@example.com`;
@@ -235,7 +259,7 @@ test.describe.serial("Aurora end to end", () => {
     const up = await ctx.newPage();
     await login(up, email, pw);
     await up.goto("/account");
-    await up.getByLabel("Current password").first().fill(pw);
+    await up.locator("#tf-pw").fill(pw); // the password card on the same page has a field with the same label
     await up.getByRole("button", { name: "Set up two-factor login" }).click();
     await expect(up.getByRole("img", { name: "QR code for your authenticator app" })).toBeVisible();
     const secret = (await up.getByLabel("Setup key").textContent()) ?? "";

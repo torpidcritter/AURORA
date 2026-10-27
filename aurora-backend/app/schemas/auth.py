@@ -68,6 +68,20 @@ class TwoFactorPolicy(BaseModel):
     required: bool
 
 
+class InviteCreate(BaseModel):
+    email: EmailStr
+    role: RoleName = "viewer"
+
+
+class InviteToken(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+
+
+class InviteAccept(InviteToken):
+    full_name: str = Field(default="", max_length=200)
+    password: str = Field(min_length=10, max_length=256)
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(default="", max_length=200)

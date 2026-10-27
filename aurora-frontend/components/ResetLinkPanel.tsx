@@ -9,7 +9,8 @@ import type { ResetLink } from "@/lib/types";
 
 /** Shows a freshly issued one-time reset link. It lives only in React state: closing the panel discards it and the
  *  server cannot show it again (it stores only a hash). */
-export function ResetLinkPanel({ email, link, onDone }: { email: string; link: ResetLink; onDone: () => void }) {
+export function ResetLinkPanel({ email, link, onDone, kind = "reset" }: { email: string; link: ResetLink; onDone: () => void; kind?: "reset" | "invite" }) {
+  const invite = kind === "invite";
   const input = useRef<HTMLInputElement>(null);
   const panel = useRef<HTMLElement>(null);
   const [copy, setCopy] = useState<"idle" | "copied" | "manual">("idle");
@@ -29,12 +30,12 @@ export function ResetLinkPanel({ email, link, onDone }: { email: string; link: R
   };
 
   return (
-    <section ref={panel} aria-label={`Reset link for ${email}`} className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+    <section ref={panel} aria-label={`${invite ? "Invitation" : "Reset"} link for ${email}`} className="mb-4 space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
-        <KeyRound className="h-4 w-4 text-primary" aria-hidden /> One-time reset link for {email}
+        <KeyRound className="h-4 w-4 text-primary" aria-hidden /> One-time {invite ? "invitation" : "reset"} link for {email}
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <label htmlFor="reset-link-url" className="sr-only">Reset link</label>
+        <label htmlFor="reset-link-url" className="sr-only">{invite ? "Invitation link" : "Reset link"}</label>
         <input
           id="reset-link-url"
           ref={input}
@@ -50,10 +51,10 @@ export function ResetLinkPanel({ email, link, onDone }: { email: string; link: R
       </div>
       {copy === "manual" && <p className="text-xs text-muted">Copying is blocked here. The link is selected: press Ctrl+C (⌘C on a Mac).</p>}
       <p className="text-xs text-muted">
-        Works once and expires <span className="text-ink">{fmtDateTime(link.expires_at)}</span>. Any earlier link for this user no longer works.
+        Works once and expires <span className="text-ink">{fmtDateTime(link.expires_at)}</span>. Any earlier link for {invite ? "this address" : "this user"} no longer works.
       </p>
       <Notice tone="warn">
-        Anyone with this link can set this user&apos;s password. Send it only over a trusted channel (in person, by phone, or a direct
+        {invite ? "Anyone with this link can create this account." : "Anyone with this link can set this user's password."} Send it only over a trusted channel (in person, by phone, or a direct
         message to them), never in a shared channel or ticket. It will not be shown again.
       </Notice>
       <div className="flex justify-end">
