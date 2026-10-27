@@ -6,9 +6,10 @@ import useSWR from "swr";
 import { SupplierForm } from "@/components/SupplierForm";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, LoadingBlock, PageHeader, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
-import { fmtInt, fmtMoney } from "@/lib/format";
+import { fmt1, fmtInt, fmtMoney, fmtPct } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import type { Supplier } from "@/lib/types";
+import { leadTimeSlip } from "@/lib/pricing";
+import type { Supplier, SupplierPerformance } from "@/lib/types";
 
 export default function SuppliersPage() {
   const { can } = useSession();
@@ -16,6 +17,8 @@ export default function SuppliersPage() {
   const [q, setQ] = useState("");
   const [inactive, setInactive] = useState(false);
   const list = useSWR<Supplier[]>(`/suppliers?include_inactive=${inactive}${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}`);
+  const perf = useSWR<SupplierPerformance[]>("/suppliers/performance");
+  const perfById = new Map((perf.data ?? []).map((x) => [x.supplier_id, x]));
   const [editing, setEditing] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>(null);
 
@@ -33,7 +36,7 @@ export default function SuppliersPage() {
     <>
       <PageHeader
         title="Suppliers"
-        description="Who you buy from. A supplier's lead time is used for its products that have none of their own, and purchase orders are grouped by supplier."
+        description="Who you buy from. A supplier's lead time is used for its products that have none of their own, and purchase orders are grouped by supplier. Reliability is measured from purchase orders sent in the last year; once a supplier has 3 deliveries, the spread of its lead times feeds safety stock."
       />
       {editable && (
         <Card title="Add a supplier" className="mb-6">
@@ -69,6 +72,9 @@ export default function SuppliersPage() {
                 <Th className="text-right">Lead time</Th>
                 <Th className="text-right">Min. order</Th>
                 <Th className="text-right">Products</Th>
+                <Th className="text-right">Measured lead time</Th>
+                <Th className="text-right">On time</Th>
+                <Th className="text-right">Fill rate</Th>
                 {editable && <Th><span className="sr-only">Actions</span></Th>}
               </tr>
             </thead>
@@ -76,7 +82,7 @@ export default function SuppliersPage() {
               {list.data.map((s) =>
                 editing === s.id ? (
                   <tr key={s.id}>
-                    <Td colSpan={editable ? 6 : 5}>
+                    <Td colSpan={editable ? 9 : 8}>
                       <SupplierForm
                         supplier={s}
                         onCancel={() => setEditing(null)}
@@ -100,6 +106,7 @@ export default function SuppliersPage() {
                     <Td className="text-right tabular-nums">{s.lead_time_days == null ? "—" : `${s.lead_time_days} d`}</Td>
                     <Td className="text-right tabular-nums">{fmtMoney(s.min_order_value)}</Td>
                     <Td className="text-right tabular-nums">{fmtInt(s.product_count)}</Td>
+                    <ReliabilityCells stats={perfById.get(s.id)} />
                     {editable && (
                       <Td className="whitespace-nowrap text-right">
                         <Button variant="ghost" onClick={() => setEditing(s.id)}>Edit</Button>
@@ -113,6 +120,34 @@ export default function SuppliersPage() {
           </Table>
         )}
       </Card>
+    </>
+  );
+}
+
+/** Reliability measured from the supplier's purchase orders, or dashes when there are none. */
+function ReliabilityCells({ stats }: { stats: SupplierPerformance | undefined }) {
+  if (!stats || stats.deliveries === 0) {
+    return (
+      <>
+        <Td className="text-right text-faint">{stats ? `${stats.orders_sent} sent, none received` : "—"}</Td>
+        <Td className="text-right">—</Td>
+        <Td className="text-right tabular-nums">{fmtPct(stats?.fill_rate ?? null)}</Td>
+      </>
+    );
+  }
+  const slip = leadTimeSlip(stats.avg_lead_days, stats.stated_lead_days);
+  return (
+    <>
+      <Td className="text-right tabular-nums">
+        {fmt1(stats.avg_lead_days)} d{stats.lead_std_days != null && <span className="text-faint"> ± {fmt1(stats.lead_std_days)}</span>}
+        <div className="text-xs text-faint">
+          {stats.deliveries} deliver{stats.deliveries === 1 ? "y" : "ies"}
+          {slip != null && slip !== 0 && ` · ${slip > 0 ? `${fmt1(slip)} d slower` : `${fmt1(-slip)} d faster`} than stated`}
+          {!stats.enough_data && " · too few to use"}
+        </div>
+      </Td>
+      <Td className="text-right tabular-nums">{fmtPct(stats.on_time_rate)}</Td>
+      <Td className="text-right tabular-nums">{fmtPct(stats.fill_rate)}</Td>
     </>
   );
 }

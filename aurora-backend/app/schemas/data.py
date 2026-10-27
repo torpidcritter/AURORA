@@ -46,6 +46,7 @@ class ProductOut(BaseModel):
     min_order_qty: int
     missing_policy: str
     supplier_id: uuid.UUID | None = None
+    price_breaks: list[dict] | None = None
     version: int
     first_date: date | None = None
     last_date: date | None = None

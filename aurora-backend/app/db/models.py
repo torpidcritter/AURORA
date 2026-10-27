@@ -145,6 +145,8 @@ class Product(TimestampMixin, Base):
     pack_size: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     min_order_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id", ondelete="SET NULL"), index=True)
+    # Quantity price breaks from the supplier: [{"min_qty": int, "unit_cost": float}], cheapest last (ADR-038).
+    price_breaks: Mapped[list | None] = mapped_column(JSONB)
     # How dates absent from uploads are treated when building the daily series:
     # "zero" = absence means no sales (typical POS exports); "interpolate" = absence means unknown.
     missing_policy: Mapped[str] = mapped_column(String(20), nullable=False, default="zero")

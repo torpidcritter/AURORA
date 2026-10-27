@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -123,6 +123,15 @@ class POReceive(POVersion):
 
 class SuggestIn(_Strict):
     product_ids: list[uuid.UUID] | None = Field(None, max_length=1000)
+    # From a budget plan: draft exactly these quantities (for these products only) instead of the suggestions.
+    quantities: dict[uuid.UUID, Annotated[int, Field(gt=0, le=10_000_000)]] | None = Field(None, max_length=1000)
+
+
+class BudgetPlanIn(_Strict):
+    budget: float = Field(ge=0, le=1e12)
+    policy: Literal["service", "urgency"] = "service"
+    category: str | None = Field(None, max_length=120)
+    product_ids: list[uuid.UUID] | None = Field(None, max_length=1000)
 
 
 class OverrideIn(_Strict):
@@ -197,3 +206,13 @@ class TransferIn(_Strict):
     to_location_id: uuid.UUID
     quantity: int = Field(ge=1, le=10_000_000)
     note: str | None = Field(None, max_length=500)
+
+
+class PriceBreak(_Strict):
+    min_qty: int = Field(gt=1, le=10_000_000)
+    unit_cost: float = Field(ge=0, le=1e7)
+
+
+class PriceBreaksIn(_Strict):
+    expected_version: int = Field(ge=1)
+    breaks: list[PriceBreak] = Field(max_length=10)

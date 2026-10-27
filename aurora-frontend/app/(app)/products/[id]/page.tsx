@@ -7,6 +7,7 @@ import useSWR from "swr";
 import { DemandForecastChart } from "@/components/charts";
 import { InventoryEditor } from "@/components/InventoryEditor";
 import { OverridesCard } from "@/components/OverridesCard";
+import { PriceBreaksEditor } from "@/components/PriceBreaksEditor";
 import { StockByLocation } from "@/components/StockByLocation";
 import { SupplierPicker } from "@/components/SupplierPicker";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
@@ -211,6 +212,18 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
           <p className="mt-3 text-xs text-faint">Units on hand: {p.inventory_known ? fmtInt(p.on_hand) : "unknown"} · on order {fmtInt(p.on_order)} · 30-day average {fmt1(p.avg_daily_30d)}/day</p>
           <div className="mt-4 border-t border-line pt-4">
             <SupplierPicker
+              product={p}
+              editable={can("manage_purchasing")}
+              onSaved={async () => {
+                await product.mutate();
+                await loadRec();
+              }}
+            />
+          </div>
+          <div className="mt-4 border-t border-line pt-4">
+            <h3 className="mb-2 text-sm font-medium text-ink">Price breaks</h3>
+            <PriceBreaksEditor
+              key={`${p.id}-${p.version}`}
               product={p}
               editable={can("manage_purchasing")}
               onSaved={async () => {

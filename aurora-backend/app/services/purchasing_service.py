@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.db.models import Location, Organization, Product, PurchaseOrder, PurchaseOrderLine, Supplier
+from app.domain import pricing
 from app.services import inventory_service, settings_service, stock_service
 
 OPEN_UNSENT = ("draft", "approved")
@@ -339,7 +340,8 @@ def _set_lines(db: Session, org_id: uuid.UUID, po: PurchaseOrder, lines: list[di
         keep.add(pid)
         cost = ln.get("unit_cost")
         if cost is None and "unit_cost" not in ln:
-            cost = products[pid].unit_cost
+            # The supplier's price for this quantity (price breaks), else the product's unit cost.
+            cost = pricing.cost_at(products[pid].unit_cost, products[pid].price_breaks, int(ln["quantity"]))
         row = existing.get(pid)
         if row is None:
             row = PurchaseOrderLine(org_id=org_id, purchase_order_id=po.id, product_id=pid)
@@ -567,12 +569,22 @@ def delete_draft(db: Session, org_id: uuid.UUID, po_id: uuid.UUID, *, expected_v
 # --- drafts from reorder suggestions ----------------------------------------------------------------------------------
 
 
-def suggest(db: Session, org_id: uuid.UUID, user_id: uuid.UUID, product_ids: list[uuid.UUID] | None = None) -> dict:
+def suggest(
+    db: Session,
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    product_ids: list[uuid.UUID] | None = None,
+    quantities: dict[uuid.UUID, int] | None = None,
+) -> dict:
     """Create one draft per supplier from the current reorder suggestions.
 
     Products already on a draft or approved order are skipped (stock that is sent is already counted in on_order,
     which the suggestion accounts for). Products without a supplier go on one draft with no supplier, to be assigned.
+    With ``quantities`` (from a budget plan) exactly those products are drafted with those quantities; each line still
+    records the suggestion it was compared with.
     """
+    if quantities is not None:
+        product_ids = list(quantities)
     busy = set(
         db.scalars(
             select(PurchaseOrderLine.product_id)
@@ -593,18 +605,18 @@ def suggest(db: Session, org_id: uuid.UUID, user_id: uuid.UUID, product_ids: lis
         if r.get("status") != "ok":
             skipped["no_data"] += 1
             continue
-        if not r.get("recommended_order_qty"):
+        if not r.get("recommended_order_qty") and quantities is None:
             skipped["no_reorder_needed"] += 1
             continue
         if pid in busy:
             skipped["already_on_order"] += 1
             continue
-        qty = int(r["recommended_order_qty"])
+        qty = int(quantities[pid]) if quantities is not None else int(r["recommended_order_qty"])
         groups[suppliers.get(pid)].append(
             {
                 "product_id": pid,
                 "quantity": qty,
-                "suggested_qty": qty,
+                "suggested_qty": int(r.get("recommended_order_qty") or 0),
                 "suggestion": {
                     "risk_level": r.get("risk_level"),
                     "days_until_stockout": r.get("days_until_stockout"),
@@ -625,7 +637,7 @@ def suggest(db: Session, org_id: uuid.UUID, user_id: uuid.UUID, product_ids: lis
             supplier_id=supplier_id,
             lines=lines,
             source="suggested",
-            notes="Drafted from reorder suggestions.",
+            notes="Drafted from a budget plan." if quantities is not None else "Drafted from reorder suggestions.",
         )
         created.append(po)
     return {"created": created, "skipped": skipped}

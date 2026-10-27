@@ -93,6 +93,7 @@ export interface Product {
   min_order_qty: number;
   missing_policy: "zero" | "interpolate";
   supplier_id?: string | null;
+  price_breaks?: PriceBreak[] | null;
   version: number;
   first_date: string | null;
   last_date: string | null;
@@ -209,8 +210,39 @@ export interface Recommendation {
   forecast_as_of?: string;
   sigma_source?: string;
   order_value?: number | null;
+  order_unit_cost?: number | null;
+  price_break?: PriceBreakHint | null;
   overstock_value?: number | null;
   narrative?: string;
+}
+
+/** A quantity discount: from ``min_qty`` units the unit cost is ``unit_cost``. */
+export interface PriceBreak {
+  min_qty: number;
+  unit_cost: number;
+}
+
+/** The next quantity discount within reach of a recommended order. */
+export interface PriceBreakHint {
+  min_qty: number;
+  unit_cost: number;
+  extra_units: number;
+  order_value_now: number;
+  order_value_at_break: number;
+  unit_saving: number;
+}
+
+/** Supplier reliability measured from purchase orders over the last year. */
+export interface SupplierPerformance {
+  supplier_id: string;
+  orders_sent: number;
+  deliveries: number;
+  stated_lead_days: number | null;
+  avg_lead_days: number | null;
+  lead_std_days: number | null;
+  on_time_rate: number | null;
+  fill_rate: number | null;
+  enough_data: boolean;
 }
 
 export interface Kpis {
@@ -699,4 +731,34 @@ export interface DigestRun {
   trigger: "schedule" | "manual";
   created_at: string;
   text?: string[];
+}
+
+export interface BudgetLine {
+  product_id: string;
+  sku: string;
+  name: string;
+  risk_level: string;
+  recommended_qty: number;
+  unit_cost: number;
+  planned_qty: number;
+  value: number;
+  demand_in_period: number;
+  expected_short_before: number;
+  expected_short_after: number;
+  fill_rate_after: number | null;
+}
+
+export interface BudgetPlan {
+  budget: number;
+  policy: "service" | "urgency";
+  spent: number;
+  remaining: number;
+  full_cost: number;
+  products_considered: number;
+  products_funded: number;
+  expected_short: { no_orders: number; this_plan: number; all_recommended: number };
+  fill_rate: { no_orders: number | null; this_plan: number | null; all_recommended: number | null };
+  lines: BudgetLine[];
+  unfunded: { product_id: string; sku: string; name: string; recommended_qty: number; reason: string }[];
+  currency_note: string;
 }

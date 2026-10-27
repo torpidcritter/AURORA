@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.db.models import Location, Product, SalesRecord
+from app.domain import pricing
 from app.schemas.data import ProductOut
 from app.services import stock_service
 
@@ -100,6 +101,7 @@ def _to_out(p: Product, first: date | None, last: date | None, units: float | No
         min_order_qty=p.min_order_qty,
         missing_policy=p.missing_policy,
         supplier_id=p.supplier_id,
+        price_breaks=p.price_breaks or None,
         version=p.version,
         first_date=first,
         last_date=last,
@@ -130,6 +132,11 @@ def update_inventory(db: Session, org_id: uuid.UUID, product_id: uuid.UUID, chan
     stock = {k: values.pop(k) for k in ("on_hand", "on_order") if k in values}
     for k, v in values.items():
         setattr(p, k, v)
+    if "unit_cost" in values and p.price_breaks:
+        try:  # a new base price must stay above every break
+            pricing.normalise(p.price_breaks, p.unit_cost)
+        except pricing.PriceBreakError as exc:
+            raise ValidationFailed(f"{exc}. Update the price breaks first.") from exc
     if stock:
         loc = stock_service.resolve_location(db, org_id, location_id, purpose="a stock count")
         stock_service.set_level(db, p, loc.id, **stock)

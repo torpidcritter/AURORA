@@ -74,6 +74,15 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByText(/backtest periods/)).toBeVisible();
   });
 
+  test("a budget plan stays within the budget", async () => {
+    await page.goto("/budget-plan");
+    await page.getByLabel("Budget", { exact: true }).fill("500");
+    await page.getByRole("button", { name: "Plan orders" }).click();
+    await expect(page.getByRole("table", { name: "Budget plan" })).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByText("Expected fill rate")).toBeVisible();
+    await expect(page.getByText(/of \$500/)).toBeVisible();
+  });
+
   test("an in-app digest is scheduled, sent now and readable", async () => {
     const name = `E2E digest ${Date.now() % 100_000}`;
     await page.goto("/digests");

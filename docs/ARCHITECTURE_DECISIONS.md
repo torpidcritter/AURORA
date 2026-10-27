@@ -386,3 +386,16 @@ The spec names files that do not exist here; the responsibilities live in these 
   LOCKED` and moved to its next slot, and that is committed before sending, so workers never send a slot twice and a
   crash skips at most one digest. Sends are not retried automatically; "Send now" resends on demand (10 per hour per
   organisation).
+
+## ADR-037 Budget-constrained ordering
+- `POST /purchase-orders/budget-plan` takes a budget (and optionally a category) and chooses order quantities for the
+  products the reorder maths says to buy. It is read-only; drafting uses `POST /purchase-orders/suggest` with the
+  planned `quantities`, so nothing is ordered until someone approves and sends the drafts.
+- Demand over lead time plus coverage is normal with the same mean and error as the reorder point (ADR-006). Expected
+  units short for a stock position use the standard normal loss function. The default policy spends the budget one
+  step at a time (the first step reaches the MOQ, later steps are whole packs, at most 60 per product) on the step
+  that avoids the most expected shortage per unit of money. Expected shortage falls with diminishing returns, so this
+  greedy rule is close to optimal; a large MOQ is scored as one step and can leave that product unfunded, which the
+  response reports. The alternative policy funds whole suggestions in risk order.
+- Units of different products are weighted equally (expected units of demand served). There are no selling prices,
+  so the planner does not maximise margin. Products without a unit cost cannot be budgeted and are listed.

@@ -9,22 +9,35 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, require
+from app.core import rate_limit
+from app.core.errors import Conflict, ValidationFailed
 from app.core.security import Perm
 from app.db.models import PO_STATUSES
 from app.db.session import get_db
+from app.domain import pricing
 from app.schemas.common import Page
 from app.schemas.purchasing import (
     AssignProductsIn,
+    BudgetPlanIn,
     OverrideIn,
     POCreate,
     POReceive,
     POUpdate,
     POVersion,
+    PriceBreaksIn,
     SuggestIn,
     SupplierIn,
     SupplierUpdate,
 )
-from app.services import audit, override_service, overstock_service, purchasing_service
+from app.services import (
+    audit,
+    budget_service,
+    override_service,
+    overstock_service,
+    purchasing_service,
+    stock_service,
+    supplier_performance,
+)
 from app.services.purchasing_service import order_number
 
 router = APIRouter(tags=["purchasing"])
@@ -53,6 +66,36 @@ def create_supplier(
     audit.record_for(db, p, "supplier.created", resource_type="supplier", resource_id=s.id, details={"name": s.name})
     db.commit()
     return purchasing_service.supplier_out(s, 0)
+
+
+@router.get("/suppliers/performance")
+def supplier_performance_all(p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> list[dict]:
+    """Measured lead time, on-time delivery and fill rate per supplier over the last year (ADR-038)."""
+    stats = supplier_performance.for_org(db, p.org_id)
+    return [{"supplier_id": str(sid), **v} for sid, v in stats.items()]
+
+
+@router.put("/products/{product_id}/price-breaks")
+def set_price_breaks(
+    product_id: uuid.UUID,
+    body: PriceBreaksIn,
+    p: Principal = Depends(require(Perm.manage_purchasing)),
+    db: Session = Depends(get_db),
+) -> dict:
+    prod = stock_service.lock_product(db, p.org_id, product_id)
+    if prod.version != body.expected_version:
+        raise Conflict("The product was modified by someone else. Reload and try again.")
+    try:
+        breaks = pricing.normalise([b.model_dump() for b in body.breaks], prod.unit_cost)
+    except pricing.PriceBreakError as exc:
+        raise ValidationFailed(str(exc)) from exc
+    prod.price_breaks = breaks or None
+    prod.version += 1
+    audit.record_for(
+        db, p, "product.price_breaks", resource_type="product", resource_id=prod.id, details={"breaks": breaks}
+    )
+    db.commit()
+    return {"product_id": str(prod.id), "price_breaks": breaks, "version": prod.version}
 
 
 @router.get("/suppliers/{supplier_id}")
@@ -136,12 +179,21 @@ def create_order(
     return purchasing_service.order_out(db, po)
 
 
+@router.post("/purchase-orders/budget-plan")
+def budget_plan(body: BudgetPlanIn, p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> dict:
+    """The best mix of reorders for a budget (ADR-037). Read-only: nothing is drafted until /suggest is called."""
+    rate_limit.hit(f"budget-plan:{p.user_id}", 20, 60)
+    res = budget_service.plan(db, p.org_id, **body.model_dump())
+    db.commit()  # forecasts generated on the way are stored, as for recommendations
+    return res
+
+
 @router.post("/purchase-orders/suggest", status_code=201)
 def suggest_orders(
     body: SuggestIn, p: Principal = Depends(require(Perm.manage_purchasing)), db: Session = Depends(get_db)
 ) -> dict:
     """Draft one order per supplier from the current reorder suggestions. Nothing is approved or sent."""
-    res = purchasing_service.suggest(db, p.org_id, p.user_id, body.product_ids)
+    res = purchasing_service.suggest(db, p.org_id, p.user_id, body.product_ids, body.quantities)
     for po in res["created"]:
         _audit(db, p, "purchase_order.suggested", po)
     db.commit()

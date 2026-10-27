@@ -2,6 +2,9 @@ import { Badge, Notice, RiskBadge } from "@/components/ui";
 import { fmt1, fmtDate, fmtInt, fmtMoney, fmtPct, methodLabel } from "@/lib/format";
 import type { Recommendation } from "@/lib/types";
 
+const money2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtMoney2 = (v: number) => money2.format(v);
+
 /** Read-only view of one inventory recommendation, including the assumptions behind it. */
 export function RecommendationPanel({ rec }: { rec: Recommendation }) {
   if (rec.status !== "ok") {
@@ -31,6 +34,7 @@ export function RecommendationPanel({ rec }: { rec: Recommendation }) {
         {rec.should_reorder ? (
           <Badge tone="warn">
             Order {fmtInt(rec.recommended_order_qty)} units{rec.order_value != null ? ` (${fmtMoney(rec.order_value)})` : ""}
+            {rec.order_unit_cost != null ? ` at ${fmtMoney2(rec.order_unit_cost)} each` : ""}
           </Badge>
         ) : (
           <Badge tone="ok">No order needed now</Badge>
@@ -38,6 +42,11 @@ export function RecommendationPanel({ rec }: { rec: Recommendation }) {
         {!!rec.overstock_units && <Badge tone="info">{fmtInt(rec.overstock_units)} units above order-up-to</Badge>}
       </div>
       {rec.narrative && <p className="mb-3 text-sm text-ink">{rec.narrative}</p>}
+      {rec.should_reorder && rec.price_break && (
+        <Notice tone="info">
+          Ordering {fmtInt(rec.price_break.extra_units)} more ({fmtInt(rec.price_break.min_qty)} units) reaches the {fmtMoney2(rec.price_break.unit_cost)} price: {fmtMoney2(rec.price_break.order_value_at_break)} instead of {fmtMoney2(rec.price_break.order_value_now)}. The extra units also cost money to hold, so this is shown, not applied.
+        </Notice>
+      )}
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         {rows.map(([k, v, hint]) => (
           <div key={k} className="flex justify-between gap-3 border-b border-line/50 py-1">

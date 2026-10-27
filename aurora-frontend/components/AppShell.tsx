@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   TrendingUp,
+  Wallet,
   Newspaper,
   Layers,
   Truck,
@@ -79,6 +80,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: "Purchasing",
     items: [
       { href: "/purchase-orders", label: "Purchase orders", icon: ClipboardList },
+      { href: "/budget-plan", label: "Order on a budget", icon: Wallet },
       { href: "/suppliers", label: "Suppliers", icon: Truck },
     ],
   },

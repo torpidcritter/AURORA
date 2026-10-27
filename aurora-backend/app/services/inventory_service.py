@@ -10,8 +10,16 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import ValidationFailed
 from app.db.models import Alert, Dataset, Product, SalesRecord, Supplier
+from app.domain import pricing
 from app.domain.inventory import InventoryInputError, InventoryInputs, compute
-from app.services import forecast_service, model_registry, override_service, series, settings_service
+from app.services import (
+    forecast_service,
+    model_registry,
+    override_service,
+    series,
+    settings_service,
+    supplier_performance,
+)
 from app.services.forecast_service import ForecastRequest
 from app.services.product_service import get_product, org_as_of
 from app.services.settings_service import EffectiveSettings
@@ -81,6 +89,7 @@ def recommendation(
     forecast_override: list[float] | None = None,
     sigma_multiplier: float = 1.0,
     org_settings: EffectiveSettings | None = None,
+    supplier_stats: dict | None = None,
 ) -> dict:
     product = get_product(db, org_id, product_id)
     supplier = db.get(Supplier, product.supplier_id) if product.supplier_id else None
@@ -90,6 +99,17 @@ def recommendation(
         org_settings or settings_service.for_org(db, org_id),
         supplier.lead_time_days if supplier is not None else None,
     )
+    if supplier is not None and not (overrides or {}).get("lead_time_std_days"):
+        stats = (supplier_stats if supplier_stats is not None else supplier_performance.for_org(db, org_id)).get(
+            supplier.id
+        )
+        measured = supplier_performance.lead_std_for(stats)
+        if measured is not None:
+            params["lead_time_std_days"] = measured
+            assumptions.append(
+                f"Lead-time variability of {measured:g} days measured from {stats['deliveries']} deliveries "  # type: ignore[index]
+                f"by {supplier.name}"
+            )
     base = {"product_id": str(product.id), "sku": product.sku, "name": product.name}
     if not product.inventory_known and (overrides or {}).get("on_hand") is None:
         return {
@@ -126,7 +146,7 @@ def recommendation(
         res = compute(InventoryInputs(forecast=daily, sigma_d=sigma, **params))
     except InventoryInputError as exc:
         raise ValidationFailed(str(exc)) from exc
-    unit_cost = product.unit_cost
+    unit_cost = pricing.cost_at(product.unit_cost, product.price_breaks, res.recommended_order_qty)
     out = {
         **base,
         "status": "ok",
@@ -141,7 +161,9 @@ def recommendation(
         "forecast_as_of": fc["as_of"],
         "sigma_source": fc.get("error_sd_source"),
         "order_value": round(res.recommended_order_qty * unit_cost, 2) if unit_cost is not None else None,
-        "overstock_value": round(res.overstock_units * unit_cost, 2) if unit_cost is not None else None,
+        "order_unit_cost": unit_cost,
+        "price_break": pricing.next_break(product.unit_cost, product.price_breaks, res.recommended_order_qty),
+        "overstock_value": round(res.overstock_units * product.unit_cost, 2) if product.unit_cost is not None else None,
         "assumptions": assumptions + res.notes,
     }
     out["narrative"] = narrative(out)
@@ -184,9 +206,10 @@ def risk_matrix(
     if product_ids:
         q = q.where(Product.id.in_(product_ids))
     eff = org_settings or settings_service.for_org(db, org_id)  # read once for the whole matrix
+    stats = supplier_performance.for_org(db, org_id)
     out = []
     for pid in db.scalars(q).all():
-        r = recommendation(db, org_id, pid, fast=True, org_settings=eff)
+        r = recommendation(db, org_id, pid, fast=True, org_settings=eff, supplier_stats=stats)
         out.append(r)
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
     out.sort(key=lambda r: (order.get(r["risk_level"], 5), -(r.get("urgency") or 0)))
