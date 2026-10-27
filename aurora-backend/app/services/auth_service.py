@@ -25,7 +25,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.models import PasswordResetToken, RefreshToken, User
-from app.services import audit
+from app.services import audit, two_factor
 
 logger = logging.getLogger("aurora.auth")
 
@@ -73,7 +73,9 @@ def _issue(db: Session, user: User, family_id: uuid.UUID | None, ip: str | None,
     return IssuedTokens(access, raw, expires_in, int(ttl.total_seconds()), user)
 
 
-def login(db: Session, email: str, password: str, ip: str | None, ua: str | None) -> IssuedTokens:
+def login(
+    db: Session, email: str, password: str, ip: str | None, ua: str | None, otp: str | None = None
+) -> IssuedTokens:
     s = get_settings()
     email_n = email.strip().lower()
     rate_limit.hit(f"login:ip:{ip}", s.login_rate_limit_per_minute * 3, 60, fail_closed=True)
@@ -127,11 +129,53 @@ def login(db: Session, email: str, password: str, ip: str | None, ua: str | None
         )
         db.commit()
         raise generic
+    if user.two_factor_enabled:
+        if not otp:
+            # The password was right; ask for the second factor without counting a failure. The per-account rate
+            # limit above still bounds password guessing through this answer.
+            db.commit()
+            raise Unauthorized("Enter the code from your authenticator app", code="two_factor_required")
+        how = two_factor.check_second_factor(user, otp)
+        if how is None:
+            user.failed_login_count += 1
+            if user.failed_login_count >= s.login_lockout_threshold:
+                user.locked_until = _now() + timedelta(minutes=s.login_lockout_minutes)
+                user.failed_login_count = 0
+            audit.record(
+                db,
+                "auth.login",
+                org_id=user.org_id,
+                actor_id=user.id,
+                actor_email=user.email,
+                outcome="failure",
+                ip=ip,
+                details={"reason": "bad_second_factor"},
+            )
+            db.commit()
+            raise Unauthorized("That code is not valid", code="invalid_two_factor_code")
+        if how == "recovery_code":
+            audit.record(
+                db,
+                "auth.recovery_code_used",
+                org_id=user.org_id,
+                actor_id=user.id,
+                actor_email=user.email,
+                ip=ip,
+                details={"remaining": len(user.recovery_codes or [])},
+            )
     user.failed_login_count = 0
     user.locked_until = None
     user.last_login_at = _now()
     tokens = _issue(db, user, None, ip, ua)
-    audit.record(db, "auth.login", org_id=user.org_id, actor_id=user.id, actor_email=user.email, ip=ip)
+    audit.record(
+        db,
+        "auth.login",
+        org_id=user.org_id,
+        actor_id=user.id,
+        actor_email=user.email,
+        ip=ip,
+        details={"two_factor": user.two_factor_enabled},
+    )
     db.commit()
     return tokens
 

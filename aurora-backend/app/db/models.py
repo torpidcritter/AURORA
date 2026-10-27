@@ -66,9 +66,19 @@ class User(TimestampMixin, Base):
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Bumped on password change / deactivation / role change so existing access tokens stop working.
     token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Two-factor login (ADR-040). Secrets are encrypted with TOKEN_ENCRYPTION_KEYS; recovery codes are stored hashed.
+    totp_secret: Mapped[str | None] = mapped_column(Text)
+    totp_pending: Mapped[str | None] = mapped_column(Text)  # set up but not yet confirmed with a code
+    totp_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)  # last accepted step: each code works once
+    recovery_codes: Mapped[list | None] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    @property
+    def two_factor_enabled(self) -> bool:
+        return self.totp_enabled_at is not None
 
 
 class RefreshToken(TimestampMixin, Base):

@@ -22,6 +22,8 @@ export interface Me {
   permissions: string[];
   last_login_at: string | null;
   created_at: string;
+  two_factor_enabled?: boolean;
+  two_factor_required?: boolean;
 }
 
 export interface User {
@@ -32,6 +34,16 @@ export interface User {
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
+  two_factor_enabled?: boolean;
+}
+
+/** Two-factor login state of the signed-in account. */
+export interface TwoFactorStatus {
+  enabled: boolean;
+  enabled_at: string | null;
+  recovery_codes_left: number;
+  pending_setup: boolean;
+  required_by_organisation: boolean;
 }
 
 /** A one-time password reset link. Shown to the administrator once; only its hash is stored. */

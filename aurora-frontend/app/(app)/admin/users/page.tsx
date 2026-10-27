@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import useSWR from "swr";
 
 import { ResetLinkPanel } from "@/components/ResetLinkPanel";
+import { TwoFactorPolicyCard } from "@/components/TwoFactor";
 import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, Field, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
@@ -57,6 +58,12 @@ export default function UsersPage() {
     }
   };
 
+  const resetTwoFactor = async (u: User) => {
+    setRowErr(null);
+    await api(`/users/${u.id}/two-factor/reset`, { method: "POST" });
+    await list.mutate();
+  };
+
   const issueResetLink = async (u: User) => {
     setRowErr(null);
     setResetLink(null);
@@ -84,6 +91,7 @@ export default function UsersPage() {
         {err != null && <div className="mt-3"><ErrorState error={err} /></div>}
         {msg && <div className="mt-3"><Notice tone="ok">{msg}</Notice></div>}
       </Card>
+      {can("manage_settings") && <TwoFactorPolicyCard />}
       <Card title="Members">
         {rowErr != null && <div className="mb-3"><ErrorState error={rowErr} /></div>}
         {resetLink && <ResetLinkPanel email={resetLink.email} link={resetLink.link} onDone={() => setResetLink(null)} />}
@@ -120,7 +128,10 @@ export default function UsersPage() {
                           {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                         </Select>
                       </Td>
-                      <Td>{u.is_active ? <Badge tone="ok">active</Badge> : <Badge tone="warn">deactivated</Badge>}</Td>
+                      <Td>
+                        {u.is_active ? <Badge tone="ok">active</Badge> : <Badge tone="warn">deactivated</Badge>}{" "}
+                        {u.two_factor_enabled ? <Badge tone="info">2FA on</Badge> : <Badge>no 2FA</Badge>}
+                      </Td>
                       <Td>{fmtDateTime(u.last_login_at)}</Td>
                       <Td className="text-right">
                         <div className="flex justify-end gap-2">
@@ -133,6 +144,17 @@ export default function UsersPage() {
                               onConfirm={() => issueResetLink(u)}
                             >
                               Reset link
+                            </ConfirmButton>
+                          )}
+                          {!self && u.two_factor_enabled && (
+                            <ConfirmButton
+                              variant="secondary"
+                              title={`Reset two-factor login for ${u.email}?`}
+                              body="Use this when they lost their phone and their recovery codes. They are signed out everywhere and sign in with their password alone until they set it up again (straight away if your organisation requires it)."
+                              confirmLabel="Reset two-factor"
+                              onConfirm={() => resetTwoFactor(u)}
+                            >
+                              Reset two-factor
                             </ConfirmButton>
                           )}
                           {!self &&

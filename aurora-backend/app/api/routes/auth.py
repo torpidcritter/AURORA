@@ -15,17 +15,21 @@ from app.schemas.auth import (
     LoginRequest,
     MeOut,
     PasswordChange,
+    PasswordConfirm,
     PasswordReset,
     PasswordResetConfirm,
     RefreshRequest,
     RegisterRequest,
     ResetLinkOut,
     TokenPair,
+    TwoFactorCode,
+    TwoFactorDisable,
+    TwoFactorPolicy,
     UserOut,
     UserUpdate,
 )
 from app.schemas.common import Page
-from app.services import audit, auth_service
+from app.services import audit, auth_service, two_factor
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 users_router = APIRouter(prefix="/users", tags=["users"])
@@ -43,7 +47,9 @@ def _pair(t: auth_service.IssuedTokens) -> TokenPair:
 @router.post("/login", response_model=TokenPair)
 def login(body: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
     return _pair(
-        auth_service.login(db, body.email, body.password, client_ip(request), request.headers.get("user-agent"))
+        auth_service.login(
+            db, body.email, body.password, client_ip(request), request.headers.get("user-agent"), otp=body.otp
+        )
     )
 
 
@@ -66,6 +72,7 @@ def me(p: Principal = Depends(get_principal), db: Session = Depends(get_db)) -> 
         **UserOut.model_validate(user).model_dump(),
         permissions=sorted(ROLE_PERMISSIONS[Role(user.role)]),
         org_name=org.name,
+        two_factor_required=not user.two_factor_enabled and two_factor.org_requires(db, user.org_id),
     )
 
 
@@ -120,6 +127,95 @@ def create_reset_link(
 def password_reset(body: PasswordResetConfirm, request: Request, db: Session = Depends(get_db)) -> None:
     """Public: set a new password with a one-time link. Every session of the user ends."""
     auth_service.reset_password_with_token(db, body.token, body.new_password, client_ip(request))
+
+
+# --- two-factor login (ADR-040) -----------------------------------------------------------------------------------
+
+
+def _me(db: Session, p: Principal) -> User:
+    user = db.scalar(select(User).where(User.id == p.user_id).with_for_update())
+    assert user is not None
+    return user
+
+
+@router.get("/two-factor")
+def two_factor_status(p: Principal = Depends(get_principal), db: Session = Depends(get_db)) -> dict:
+    return two_factor.status(db, _me(db, p))
+
+
+@router.post("/two-factor/setup")
+def two_factor_setup(
+    body: PasswordConfirm, p: Principal = Depends(get_principal), db: Session = Depends(get_db)
+) -> dict:
+    """A new secret for an authenticator app. Nothing changes for sign-in until a code from it is confirmed."""
+    out = two_factor.start_setup(_me(db, p), body.current_password)
+    db.commit()
+    return out
+
+
+@router.post("/two-factor/enable")
+def two_factor_enable(
+    body: TwoFactorCode, p: Principal = Depends(get_principal), db: Session = Depends(get_db)
+) -> dict:
+    """Confirm the setup with a code. Returns recovery codes, shown this once."""
+    codes = two_factor.confirm_setup(_me(db, p), body.code)
+    audit.record_for(db, p, "auth.two_factor_enabled", resource_type="user", resource_id=p.user_id)
+    db.commit()
+    return {"recovery_codes": codes}
+
+
+@router.post("/two-factor/disable", status_code=204)
+def two_factor_disable(
+    body: TwoFactorDisable, p: Principal = Depends(get_principal), db: Session = Depends(get_db)
+) -> None:
+    two_factor.disable(db, _me(db, p), body.current_password, body.code)
+    audit.record_for(db, p, "auth.two_factor_disabled", resource_type="user", resource_id=p.user_id)
+    db.commit()
+
+
+@router.post("/two-factor/recovery-codes")
+def two_factor_new_codes(
+    body: TwoFactorCode, p: Principal = Depends(get_principal), db: Session = Depends(get_db)
+) -> dict:
+    """Replace the recovery codes; the old ones stop working."""
+    codes = two_factor.regenerate_codes(_me(db, p), body.code)
+    audit.record_for(db, p, "auth.recovery_codes_regenerated", resource_type="user", resource_id=p.user_id)
+    db.commit()
+    return {"recovery_codes": codes}
+
+
+@router.put("/two-factor/policy")
+def two_factor_policy(
+    body: TwoFactorPolicy, p: Principal = Depends(require(Perm.manage_settings)), db: Session = Depends(get_db)
+) -> dict:
+    """Require two-factor login for every account in the organisation."""
+    before = two_factor.set_policy(db, _me(db, p), body.required)
+    if before != body.required:
+        audit.record_for(
+            db,
+            p,
+            "settings.two_factor_policy",
+            resource_type="organization",
+            resource_id=p.org_id,
+            details={"required": body.required},
+        )
+    db.commit()
+    return {"required": body.required}
+
+
+@users_router.post("/{user_id}/two-factor/reset", status_code=204)
+def reset_two_factor(
+    user_id: uuid.UUID, p: Principal = Depends(require(Perm.manage_users)), db: Session = Depends(get_db)
+) -> None:
+    """For a user who lost their device and recovery codes. Their sessions end; they set it up again at sign-in."""
+    if user_id == p.user_id:
+        raise Forbidden("Ask another administrator to reset your own two-factor login")
+    user = auth_service.get_org_user(db, p.org_id, user_id)
+    two_factor.clear(user)
+    user.token_version += 1
+    auth_service.revoke_all_for_user(db, user.id, "two_factor_reset")
+    audit.record_for(db, p, "user.two_factor_reset", resource_type="user", resource_id=user.id)
+    db.commit()
 
 
 @users_router.get("", response_model=Page[UserOut])

@@ -58,6 +58,7 @@ How to run each suite: `docs/TESTING.md`.
 | Budget plan: expected shortage against simulation, order steps honouring pack size and MOQ, spend within the budget, the greedy policy never worse than funding by urgency, products without cost listed, category filter, drafts using the planned quantities, tenant isolation | `tests/integration/test_budget_plan.py`, `aurora-frontend/tests/budget.test.tsx`, Playwright budget flow |
 | Supplier terms: price-break rules, version guard and audit, purchase order lines priced by tier (explicit prices kept), base-cost changes guarded, recommendation tier price and next-break hint, measured lead time, on-time and fill rate over the window, measured spread raising safety stock only with 3+ deliveries and yielding to an explicit override, tenant isolation | `tests/integration/test_supplier_terms.py`, `aurora-frontend/tests/pricing.test.tsx` |
 | Audit export and retention: CSV and JSON Lines with filters and date range, own organisation only, formula cells neutralised, row cap, the export itself audited, retention per organisation with bounds, global default for others and system events, one purge note per organisation | `tests/integration/test_audit_export.py`, `aurora-frontend/tests/audit.test.ts`, Playwright audit export |
+| Two-factor login: RFC 6238 test vectors, drift window and single use of each code, setup needing the password and a confirming code, encrypted secret and hashed single-use recovery codes, sign-in asking for and checking the code, lockout after bad codes, turning off, replacing codes, the organisation requirement blocking other endpoints, admin reset ending sessions, audit events | `tests/unit/test_totp.py`, `tests/integration/test_two_factor.py`, `aurora-frontend/tests/two-factor.test.tsx`, Playwright two-factor flow |
 | Load test logic: pacing under rate limits, pass/fail gates | `unit/test_load_support.py`; local and CI Locust runs |
 | Secret scanner rules and allowlist | `unit/test_secret_scan.py` |
 
@@ -86,7 +87,8 @@ candidate by the promotion gate.
 ## Known limitations and risks
 - Shopify order edits (`orders/updated`) are not reconciled. Shopify and uploaded sales for the same days are summed.
 - Password reset needs an admin to pass the link on; there is no e-mail provider (ADR-029).
-- A sole admin who forgets their password has no recovery path short of direct database access; keep two admins.
+- A sole admin who forgets their password, or loses both their phone and recovery codes, has no recovery path
+  short of direct database access; keep two admins. Two-factor login has no passkeys or remembered devices.
 - Container images are not scanned for OS-package CVEs in CI (ADR-026).
 - The first forecast per product after new data takes seconds on CPU; batch forecast jobs pre-warm the cache.
 - Transformer training is CPU-bound (about 2 minutes for 20 SKUs × 1 year). Large catalogues need a GPU or sampling.

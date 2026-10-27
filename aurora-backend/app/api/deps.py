@@ -21,6 +21,10 @@ from app.db.models import User
 from app.db.session import get_db
 
 _bearer = HTTPBearer(auto_error=False)
+# What an account without two-factor login can still reach when its organisation requires it (ADR-040).
+TWO_FACTOR_SETUP_PATHS = frozenset(
+    {"/auth/me", "/auth/password", "/auth/two-factor", "/auth/two-factor/setup", "/auth/two-factor/enable"}
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,14 @@ def get_principal(
     # Per-user ceiling on all authenticated traffic (shared across API instances via Redis; fails open if Redis is
     # down). Expensive endpoints have tighter limits of their own.
     rate_limit.hit(f"api:{user.id}", get_settings().api_rate_limit_per_minute, 60)
+    if user.totp_enabled_at is None and request.url.path not in TWO_FACTOR_SETUP_PATHS:
+        from app.services import two_factor  # local import: services import this module's types
+
+        if two_factor.org_requires(db, user.org_id):
+            raise Forbidden(
+                "Your organisation requires two-factor login. Set it up under Account security.",
+                code="two_factor_required",
+            )
     return Principal(user_id=user.id, org_id=user.org_id, role=user.role, email=user.email, ip=client_ip(request))
 
 

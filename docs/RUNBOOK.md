@@ -103,7 +103,8 @@ CI checks that the models and migrations agree (`alembic check`).
   Migrations `0002` and `0003` only add a table and columns; `0005` adds the supplier, purchase order and override
   tables and a nullable `products.supplier_id`, so code from before it still runs against the upgraded schema. `0006` adds locations, stock levels and transfers and
   backfills a `MAIN` location; product totals are kept, but downgrading drops the per-location detail. `0007` adds
-  the digest tables only; `0008` adds a nullable `products.price_breaks` column. Before downgrading, restore the pre-upgrade backup rather
+  the digest tables only; `0008` adds a nullable `products.price_breaks` column; `0009` adds nullable two-factor columns to `users`
+  (downgrading drops them, which turns two-factor login off for everyone). Before downgrading, restore the pre-upgrade backup rather
   than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.
@@ -193,6 +194,7 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | Slow first forecast for a product | Expected: it backtests baselines once per data fingerprint | Run *Batch forecast* after uploads to warm the cache |
 | Shopify webhooks rejected (401) | `aurora_webhooks_total{outcome="bad_signature"}` rising; API log "invalid signature" | Check `SHOPIFY_API_SECRET`; during rotation set `SHOPIFY_API_SECRET_PREVIOUS` |
 | A user is locked out or forgot their password | *Users* page, audit log `auth.login` failures | An admin opens *Users*, chooses *Reset link* and passes the link on over a trusted channel (it is shown once, works once and expires after `PASSWORD_RESET_TTL_MINUTES`, default 60). Admins cannot issue one for themselves, so keep at least two admin accounts: there is no command-line recovery for a sole admin who forgot their password yet |
+| A user lost the phone with their authenticator app | *Users* page ("2FA on" badge), audit log `auth.login` with reason `bad_second_factor` | They can sign in with one of their recovery codes and set up the new phone from *Account and security*. Without codes, another admin uses *Reset two-factor* on the *Users* page: their sessions end and they set it up again (straight away if the organisation requires it). Admins cannot reset their own |
 | "This reset link is invalid" | Audit log `auth.password_reset` failures show the real reason (expired, used, superseded, inactive user) | Issue a new link; issuing one cancels older ones |
 | Alerts appear in the app but not in the webhook | *Settings* minimum severity, `ALERT_MIN_SEVERITY` | Only alerts at or above the organisation's minimum (default `high`) are sent to channels; lower ones stay in the app |
 | Stock on order looks wrong after purchasing | *Purchase orders* (filter *Open*), audit log `purchase_order.*` | `on_order` changes only when an order is sent, received or cancelled. Correct a mistake by cancelling the order (releases what is outstanding) or editing the product's stock, which is audited |

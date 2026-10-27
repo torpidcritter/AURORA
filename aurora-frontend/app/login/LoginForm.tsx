@@ -25,6 +25,8 @@ export function LoginForm() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [needsCode, setNeedsCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -35,19 +37,28 @@ export function LoginForm() {
       setError("Enter your email and password.");
       return;
     }
+    if (needsCode && !otp.trim()) {
+      setError("Enter the code from your authenticator app, or a recovery code.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json", "x-aurora-csrf": "1" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email: email.trim(), password, ...(needsCode ? { otp: otp.trim() } : {}) }),
       });
       if (res.ok) {
         router.replace(safeNext(params.get("next")));
         router.refresh();
         return;
       }
-      const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+      const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+      if (body?.error?.code === "two_factor_required") {
+        setNeedsCode(true);
+        return;
+      }
+      if (body?.error?.code === "invalid_two_factor_code") setOtp("");
       if (res.status === 429) setError("Too many attempts. Wait a minute and try again.");
       else setError(body?.error?.message ?? "Sign-in failed.");
     } catch {
@@ -70,6 +81,11 @@ export function LoginForm() {
       <Field label="Password" htmlFor="password">
         <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       </Field>
+      {needsCode && (
+        <Field label="Authentication code" htmlFor="otp" hint="The 6-digit code from your authenticator app, or one of your recovery codes.">
+          <Input id="otp" autoComplete="one-time-code" inputMode="text" autoFocus value={otp} onChange={(e) => setOtp(e.target.value)} required />
+        </Field>
+      )}
       <Button type="submit" variant="primary" loading={busy} className="w-full">
         Sign in
       </Button>

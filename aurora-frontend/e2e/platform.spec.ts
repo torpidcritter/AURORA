@@ -1,6 +1,6 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
-import { creds, login } from "./helpers";
+import { creds, login, totpCode } from "./helpers";
 
 const admin = creds();
 
@@ -220,6 +220,47 @@ test.describe.serial("Aurora end to end", () => {
     );
     expect(status).toBe(403);
     await ctx.close();
+  });
+
+  test("a user turns on two-factor login and then needs a code to sign in", async ({ browser }) => {
+    await page.goto("/admin/users");
+    const email = `twofactor.${Date.now()}@example.com`;
+    const pw = "TwoFactor-E2E-pass1";
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Initial password").fill(pw);
+    await page.getByRole("button", { name: "Create user" }).click();
+    await expect(page.getByText(`Created ${email}`)).toBeVisible();
+
+    const ctx = await browser.newContext();
+    const up = await ctx.newPage();
+    await login(up, email, pw);
+    await up.goto("/account");
+    await up.getByLabel("Current password").first().fill(pw);
+    await up.getByRole("button", { name: "Set up two-factor login" }).click();
+    await expect(up.getByRole("img", { name: "QR code for your authenticator app" })).toBeVisible();
+    const secret = (await up.getByLabel("Setup key").textContent()) ?? "";
+    await up.getByLabel("Code from the app").fill(await totpCode(secret));
+    await up.getByRole("button", { name: "Turn on" }).click();
+    await expect(up.getByRole("list", { name: "Recovery codes" }).getByRole("listitem")).toHaveCount(10);
+    const recovery = (await up.getByRole("list", { name: "Recovery codes" }).getByRole("listitem").first().textContent()) ?? "";
+    await up.getByRole("button", { name: "I have saved them" }).click();
+    await expect(up.getByText(/10 recovery codes left/)).toBeVisible();
+    await ctx.close();
+
+    // Signing in now takes the password and then a code; a recovery code works too.
+    const ctx2 = await browser.newContext();
+    const p2 = await ctx2.newPage();
+    await p2.goto("/login");
+    await p2.getByLabel("Email").fill(email);
+    await p2.getByLabel("Password").fill(pw);
+    await p2.getByRole("button", { name: /sign in/i }).click();
+    await p2.getByLabel("Authentication code").fill(recovery);
+    await p2.getByRole("button", { name: /sign in/i }).click();
+    await expect(p2).toHaveURL(/\/dashboard$/);
+    await ctx2.close();
+
+    await page.reload();
+    await expect(page.getByRole("row").filter({ hasText: email })).toContainText("2FA on");
   });
 
   test("assistant answers from real data (built-in mode without an API key)", async () => {

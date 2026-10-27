@@ -83,7 +83,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Budget-constrained ordering with drafts from the plan (ADR-037)
 - [x] Supplier price breaks and measured supplier reliability feeding safety stock (ADR-038)
 - [x] Audit log export (CSV, JSON Lines) and per-organisation retention (ADR-039)
-- [ ] Next roadmap items: two-factor login, invites, data export and deletion, API keys
+- [x] Two-factor login with an authenticator app, recovery codes and an organisation requirement (ADR-040)
+- [ ] Next roadmap items: invites, data export and deletion, API keys
   and webhooks, launches, promotions, assistant actions, PDF reports, observability, UX polish, connectors;
   per-location demand needs sales by location
 

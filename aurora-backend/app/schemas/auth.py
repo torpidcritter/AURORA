@@ -19,6 +19,7 @@ class LoginRequest(BaseModel):
 
     email: str = Field(min_length=3, max_length=320, validation_alias=AliasChoices("email", "username"))
     password: str = Field(min_length=1, max_length=256)
+    otp: str | None = Field(default=None, max_length=20, description="Authenticator code or a recovery code")
 
 
 class RefreshRequest(BaseModel):
@@ -42,11 +43,29 @@ class UserOut(ORMModel):
     is_active: bool
     last_login_at: datetime | None
     created_at: datetime
+    two_factor_enabled: bool = False
 
 
 class MeOut(UserOut):
     permissions: list[str]
     org_name: str
+    two_factor_required: bool = False  # the organisation requires it and this account has not set it up
+
+
+class PasswordConfirm(BaseModel):
+    current_password: str = Field(min_length=1, max_length=256)
+
+
+class TwoFactorCode(BaseModel):
+    code: str = Field(min_length=6, max_length=20)
+
+
+class TwoFactorDisable(PasswordConfirm, TwoFactorCode):
+    pass
+
+
+class TwoFactorPolicy(BaseModel):
+    required: bool
 
 
 class RegisterRequest(BaseModel):

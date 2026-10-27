@@ -15,14 +15,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!isSameOriginMutation(req)) {
     return NextResponse.json({ error: { code: "csrf", message: "Cross-site request blocked" } }, { status: 403 });
   }
-  let payload: { email?: unknown; password?: unknown };
+  let payload: { email?: unknown; password?: unknown; otp?: unknown };
   try {
-    payload = (await req.json()) as { email?: unknown; password?: unknown };
+    payload = (await req.json()) as { email?: unknown; password?: unknown; otp?: unknown };
   } catch {
     return NextResponse.json({ error: { code: "bad_request", message: "Invalid JSON" } }, { status: 400 });
   }
   if (typeof payload.email !== "string" || typeof payload.password !== "string") {
     return NextResponse.json({ error: { code: "validation_error", message: "Email and password are required" } }, { status: 422 });
+  }
+  if (payload.otp !== undefined && (typeof payload.otp !== "string" || payload.otp.length > 20)) {
+    return NextResponse.json({ error: { code: "validation_error", message: "Invalid code" } }, { status: 422 });
   }
   const fwd = clientAddress(req);
   let upstream: Response;
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         "user-agent": req.headers.get("user-agent") ?? "aurora-bff",
         ...clientAddressHeaders(fwd),
       },
-      body: JSON.stringify({ email: payload.email, password: payload.password }),
+      body: JSON.stringify({ email: payload.email, password: payload.password, ...(payload.otp ? { otp: payload.otp } : {}) }),
       cache: "no-store",
     });
   } catch {

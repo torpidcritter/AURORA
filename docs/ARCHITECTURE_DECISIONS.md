@@ -436,3 +436,25 @@ The spec names files that do not exist here; the responsibilities live in these 
   rows but never update them (ADR-024).
 - There is no legal hold or write-once archive. Organisations that must keep the log longer than 10 years, or keep it
   tamper-evident, should export it regularly into their own archive.
+
+## ADR-040 Two-factor login with an authenticator app
+- Users can add time-based one-time passwords (RFC 6238: SHA-1, 6 digits, 30-second steps, one step of drift either
+  way), which every common authenticator app supports. The algorithm is about 40 lines of standard library code in
+  `app/core/totp.py`, checked against the RFC test vectors, rather than a new dependency handling secrets.
+- Setup needs the current password, returns a secret and an `otpauth://` URI (the web app renders it as a QR code in
+  the browser), and changes nothing until a code from the app is confirmed. Secrets are encrypted with
+  `TOKEN_ENCRYPTION_KEYS`, like other credentials. The last accepted time step is stored, so each code works once.
+- Ten recovery codes (50 bits each) are shown once and stored as keyed SHA-256 hashes; each works once, using one is
+  audited, and they can be replaced with a current code.
+- Sign-in stays a single request: `POST /auth/login` with `otp`. Without it, a correct password for an account with
+  two-factor login gets `401 two_factor_required`, which does reveal that the password was right; the per-account
+  rate limit and lockout bound guessing through that answer. A wrong code counts towards the lockout like a wrong
+  password. No partially signed-in session or challenge token exists.
+- Turning it off needs the password and a current code. An administrator can reset another user's two-factor login
+  (lost phone and codes); that ends the user's sessions and is audited. Nobody can reset their own.
+- An organisation can require it (`PUT /auth/two-factor/policy`, stored as `require_two_factor` in the organisation's
+  settings document). Only an administrator who has it on can switch the requirement on. The API then refuses every
+  request from an account without it except its own account, password and two-factor setup endpoints
+  (`403 two_factor_required`), and the web app sends such users to the account page. It cannot be turned off while
+  required.
+- Not included: WebAuthn/passkeys, remembering a device, and SMS or e-mail codes (no provider, and SMS is weak).

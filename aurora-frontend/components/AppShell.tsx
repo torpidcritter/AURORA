@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { ChatProvider } from "@/components/chat";
@@ -112,6 +112,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     refreshInterval: 60_000,
   });
 
+  // An organisation that requires two-factor login sends accounts without it to set it up (the API enforces this too).
+  const mustSetUp = !!me?.two_factor_required && pathname !== "/account";
+  useEffect(() => {
+    if (mustSetUp) router.replace("/account");
+  }, [mustSetUp, router]);
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST", headers: { "x-aurora-csrf": "1" } }).catch(() => undefined);
     router.replace("/login");
@@ -190,7 +196,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="min-w-0 flex-1 truncate text-sm text-muted">{me?.org_name}</div>
             {me && (
               <div className="flex items-center gap-3 text-sm">
-                <span className="hidden text-muted sm:inline">{me.email}</span>
+                <Link href="/account" className="hidden text-muted hover:text-ink hover:underline sm:inline" title="Account and security">{me.email}</Link>
                 <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs capitalize text-ink ring-1 ring-line">{me.role}</span>
                 <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-muted hover:bg-surface-2 hover:text-ink">
                   <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Sign out</span>
