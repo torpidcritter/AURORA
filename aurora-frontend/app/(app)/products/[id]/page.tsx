@@ -7,13 +7,14 @@ import useSWR from "swr";
 import { DemandForecastChart } from "@/components/charts";
 import { InventoryEditor } from "@/components/InventoryEditor";
 import { OverridesCard } from "@/components/OverridesCard";
+import { StockByLocation } from "@/components/StockByLocation";
 import { SupplierPicker } from "@/components/SupplierPicker";
 import { RecommendationPanel } from "@/components/RecommendationPanel";
 import { Badge, Button, Card, EmptyState, ErrorState, Field, LoadingBlock, Notice, PageHeader, Select, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmt1, fmt2, fmtDate, fmtInt, fmtPct, fmtPctPoints, methodLabel } from "@/lib/format";
 import { useSession } from "@/lib/session";
-import type { Explanation, Forecast, HistoryPoint, Product, Recommendation } from "@/lib/types";
+import type { Explanation, Forecast, HistoryPoint, Product, Recommendation, StockLocation } from "@/lib/types";
 
 const METHODS = ["auto", "transformer", "holt_winters", "ses", "sma", "seasonal_naive", "croston_sba"];
 
@@ -23,6 +24,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
   const product = useSWR<Product>(`/products/${id}`);
   const history = useSWR<{ points: HistoryPoint[]; missing_policy: string }>(`/products/${id}/history?days=180`);
   const explain = useSWR<Explanation>(`/forecast/explain/${id}`, { shouldRetryOnError: false });
+  const locations = useSWR<StockLocation[]>("/locations");
+  const multiLocation = (locations.data?.length ?? 0) > 1;
 
   const [method, setMethod] = useState("auto");
   const [horizon, setHorizon] = useState(28);
@@ -196,7 +199,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
         <Card title="Stock settings" subtitle={can("manage_inventory") ? "Changes are audited" : "Read only for your role"}>
           <InventoryEditor
+            key={`${p.id}-${multiLocation}`}
             product={p}
+            stockByLocation={multiLocation}
             readOnly={!can("manage_inventory")}
             onSaved={async (updated) => {
               await product.mutate(updated, { revalidate: false });
@@ -214,6 +219,18 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
               }}
             />
           </div>
+        </Card>
+
+        <Card title="Stock by location" subtitle={multiLocation ? "Count or move stock at each location" : "Add locations to track stock in more than one place"}>
+          <StockByLocation
+            product={p}
+            editable={can("manage_inventory")}
+            onChanged={async () => {
+              await product.mutate();
+              await locations.mutate();
+              await loadRec();
+            }}
+          />
         </Card>
 
         <OverridesCard

@@ -33,7 +33,7 @@ function initial(p: Product): FormState {
 }
 
 /** Validates the editor form and builds the PATCH body. Exported for unit tests. */
-export function buildInventoryPatch(f: FormState, p: Product): { body?: Record<string, unknown>; error?: string } {
+export function buildInventoryPatch(f: FormState, p: Product, opts: { omitStock?: boolean } = {}): { body?: Record<string, unknown>; error?: string } {
   const body: Record<string, unknown> = { expected_version: p.version };
   const int = (name: string, v: string, min: number, max: number) => {
     if (v.trim() === "") return undefined;
@@ -42,10 +42,13 @@ export function buildInventoryPatch(f: FormState, p: Product): { body?: Record<s
     return n;
   };
   try {
-    const onHand = int("On hand", f.on_hand, 0, 10_000_000);
-    if (onHand !== undefined) body.on_hand = onHand;
-    const onOrder = int("On order", f.on_order, 0, 10_000_000);
-    if (onOrder !== undefined) body.on_order = onOrder;
+    // With several locations, stock is counted per location (StockByLocation), never as a product total.
+    if (!opts.omitStock) {
+      const onHand = int("On hand", f.on_hand, 0, 10_000_000);
+      if (onHand !== undefined) body.on_hand = onHand;
+      const onOrder = int("On order", f.on_order, 0, 10_000_000);
+      if (onOrder !== undefined) body.on_order = onOrder;
+    }
     const lt = int("Lead time", f.lead_time_days, 1, 365);
     if (lt !== undefined) body.lead_time_days = lt;
     if (f.service_level.trim() !== "") {
@@ -69,7 +72,18 @@ export function buildInventoryPatch(f: FormState, p: Product): { body?: Record<s
   return { body };
 }
 
-export function InventoryEditor({ product, readOnly, onSaved }: { product: Product; readOnly: boolean; onSaved: (p: Product) => Promise<void> | void }) {
+export function InventoryEditor({
+  product,
+  readOnly,
+  onSaved,
+  stockByLocation = false,
+}: {
+  product: Product;
+  readOnly: boolean;
+  onSaved: (p: Product) => Promise<void> | void;
+  /** True when the organisation has several locations: counts are then entered per location, not here. */
+  stockByLocation?: boolean;
+}) {
   const [f, setF] = useState<FormState>(() => initial(product));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>(null);
@@ -80,7 +94,7 @@ export function InventoryEditor({ product, readOnly, onSaved }: { product: Produ
     e.preventDefault();
     setErr(null);
     setMsg(null);
-    const { body, error } = buildInventoryPatch(f, product);
+    const { body, error } = buildInventoryPatch(f, product, { omitStock: stockByLocation });
     if (error) {
       setErr(new Error(error));
       return;
@@ -102,12 +116,18 @@ export function InventoryEditor({ product, readOnly, onSaved }: { product: Produ
 
   return (
     <form onSubmit={submit} className="grid grid-cols-2 gap-3">
-      <Field label="On hand (units)" htmlFor="ie-oh" hint={product.inventory_known ? undefined : "Unknown: enter a count to get recommendations"}>
-        <Input id="ie-oh" inputMode="numeric" value={f.on_hand} onChange={set("on_hand")} disabled={readOnly} />
-      </Field>
-      <Field label="On order (units)" htmlFor="ie-oo">
-        <Input id="ie-oo" inputMode="numeric" value={f.on_order} onChange={set("on_order")} disabled={readOnly} />
-      </Field>
+      {stockByLocation ? (
+        <p className="col-span-2 text-xs text-muted">Stock is counted per location, in the table below. The totals are the sum.</p>
+      ) : (
+        <>
+          <Field label="On hand (units)" htmlFor="ie-oh" hint={product.inventory_known ? undefined : "Unknown: enter a count to get recommendations"}>
+            <Input id="ie-oh" inputMode="numeric" value={f.on_hand} onChange={set("on_hand")} disabled={readOnly} />
+          </Field>
+          <Field label="On order (units)" htmlFor="ie-oo">
+            <Input id="ie-oo" inputMode="numeric" value={f.on_order} onChange={set("on_order")} disabled={readOnly} />
+          </Field>
+        </>
+      )}
       <Field label="Lead time (days)" htmlFor="ie-lt" hint="Blank = organisation default">
         <Input id="ie-lt" inputMode="numeric" value={f.lead_time_days} onChange={set("lead_time_days")} disabled={readOnly} />
       </Field>

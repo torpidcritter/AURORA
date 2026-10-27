@@ -11,7 +11,7 @@ import { api } from "@/lib/api";
 import { fmtDate, fmtDateTime, fmtInt, fmtMoney } from "@/lib/format";
 import { availableActions, linesPayload, PO_STATUS_LABEL, PO_STATUS_TONE, receivePayload, toDraftLines, type DraftLine } from "@/lib/purchasing";
 import { useSession } from "@/lib/session";
-import type { Page, Product, PurchaseOrder, Supplier } from "@/lib/types";
+import type { Page, Product, PurchaseOrder, StockLocation, Supplier } from "@/lib/types";
 
 export function PurchaseOrderView({ id }: { id: string }) {
   const router = useRouter();
@@ -51,6 +51,7 @@ export function PurchaseOrderView({ id }: { id: string }) {
             <Badge tone={PO_STATUS_TONE[po.status]}>{PO_STATUS_LABEL[po.status]}</Badge>
             {po.source === "suggested" && <Badge tone="ai">Drafted from suggestions</Badge>}
             <span>Created {fmtDateTime(po.created_at)}</span>
+            {po.location_code && <span>· deliver to {po.location_code}</span>}
             {po.expected_date && <span>· expected {fmtDate(po.expected_date)}</span>}
           </span>
         }
@@ -191,7 +192,9 @@ function suggestionText(s: Record<string, unknown> | null, suggested: number | n
 function DraftEditor({ po, onSaved, onCancel }: { po: PurchaseOrder; onSaved: (po: PurchaseOrder) => void | Promise<void>; onCancel: () => void }) {
   const suppliers = useSWR<Supplier[]>("/suppliers");
   const products = useSWR<Page<Product>>("/products?limit=500&sort=sku");
+  const locations = useSWR<StockLocation[]>("/locations");
   const [supplierId, setSupplierId] = useState(po.supplier_id ?? "");
+  const [locationId, setLocationId] = useState(po.location_id ?? "");
   const [expected, setExpected] = useState(po.expected_date ?? "");
   const [notes, setNotes] = useState(po.notes ?? "");
   const [lines, setLines] = useState<DraftLine[]>(toDraftLines(po.lines));
@@ -216,7 +219,7 @@ function DraftEditor({ po, onSaved, onCancel }: { po: PurchaseOrder; onSaved: (p
     try {
       const updated = await api<PurchaseOrder>(`/purchase-orders/${po.id}`, {
         method: "PATCH",
-        body: { expected_version: po.version, supplier_id: supplierId || null, expected_date: expected || null, notes: notes.trim() || null, lines: parsed.lines },
+        body: { expected_version: po.version, supplier_id: supplierId || null, ...(locationId ? { location_id: locationId } : {}), expected_date: expected || null, notes: notes.trim() || null, lines: parsed.lines },
       });
       await onSaved(updated);
     } catch (e) {
@@ -228,11 +231,16 @@ function DraftEditor({ po, onSaved, onCancel }: { po: PurchaseOrder; onSaved: (p
 
   return (
     <Card title="Edit draft">
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <Field label="Supplier" htmlFor="pos-s">
           <Select id="pos-s" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">No supplier yet</option>
             {(suppliers.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Deliver to" htmlFor="pos-l">
+          <Select id="pos-l" value={locationId} onChange={(e) => setLocationId(e.target.value)} disabled={!locations.data}>
+            {(locations.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.code} · {l.name}</option>)}
           </Select>
         </Field>
         <Field label="Expected delivery" htmlFor="pos-d" hint="Left blank, it is set from the supplier's lead time when sent">

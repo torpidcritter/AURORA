@@ -492,6 +492,9 @@ export interface POSummary {
 
 export interface PurchaseOrder extends POSummary {
   supplier_email: string | null;
+  location_id: string | null;
+  location_code: string | null;
+  location_name: string | null;
   notes: string | null;
   created_by: string | null;
   approved_by: string | null;
@@ -572,4 +575,52 @@ export interface OverstockReport {
   total: number;
   limit: number;
   offset: number;
+}
+
+// --- locations --------------------------------------------------------------------------------------------------------
+
+export interface StockLocation {
+  id: string;
+  code: string;
+  name: string;
+  address: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  version: number;
+  products: number;
+  on_hand: number;
+  on_order: number;
+  stock_value: number | null;
+}
+
+export interface LocationStock {
+  location_id: string;
+  code: string;
+  name: string;
+  is_default: boolean;
+  is_active: boolean;
+  on_hand: number;
+  on_order: number;
+}
+
+export interface ProductStock {
+  product_id: string;
+  on_hand: number;
+  on_order: number;
+  inventory_known: boolean;
+  locations: LocationStock[];
+}
+
+export interface StockTransfer {
+  id: string;
+  product_id: string;
+  sku: string;
+  from_location_id: string;
+  from_code: string | null;
+  to_location_id: string;
+  to_code: string | null;
+  quantity: number;
+  note: string | null;
+  created_by: string | null;
+  created_at: string | null;
 }

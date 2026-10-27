@@ -126,6 +126,30 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByRole("table", { name: "Forecast overrides and their accuracy" })).toContainText("E2E launch");
   });
 
+  test("a second location: stock moves between locations and totals stay the same", async () => {
+    const code = `E2E-${Date.now() % 1_000_000}`;
+    await page.goto("/locations");
+    await page.getByLabel("Code", { exact: true }).fill(code);
+    await page.getByLabel("Name", { exact: true }).fill("E2E store");
+    await page.getByRole("button", { name: "Add location" }).click();
+    await expect(page.getByRole("table", { name: "Locations" }).getByText(code)).toBeVisible();
+
+    await page.goto("/products");
+    await page.getByRole("table", { name: "Products" }).getByRole("link").nth(2).click();
+    const table = page.getByRole("table", { name: "Stock by location" });
+    await expect(table).toBeVisible();
+    const total = await table.getByRole("row").filter({ hasText: "Total" }).getByRole("cell").nth(1).innerText();
+    const before = Number(await table.getByRole("row").filter({ hasText: code }).getByRole("cell").nth(1).innerText());
+    await page.getByLabel("Move from").selectOption({ index: 1 });
+    await page.getByLabel("Move to").selectOption({ label: code });
+    await page.getByLabel("Units", { exact: true }).fill("1");
+    await page.getByRole("button", { name: "Transfer", exact: true }).click();
+    await expect(table.getByRole("row").filter({ hasText: code }).getByRole("cell").nth(1)).toHaveText(String(before + 1));
+    await expect(table.getByRole("row").filter({ hasText: "Total" }).getByRole("cell").nth(1)).toHaveText(total);
+    await page.goto("/locations");
+    await expect(page.getByRole("table", { name: "Recent stock transfers" })).toContainText(code);
+  });
+
   test("training runs on the real worker and registers a version", async () => {
     test.setTimeout(600_000);
     await page.goto("/models");
