@@ -1,6 +1,6 @@
 # Aurora Release Report
 
-_Updated 2026-10-26 (first build 2026-10-23). Branch `feat/aurora-platform`, pull request #1._
+_Updated 2026-10-27 (first build 2026-10-23). Branch `feat/aurora-platform`, pull request #1._
 
 ## Summary
 Aurora covers the spec's functional scope: data ingestion, per-product forecasting with calibrated intervals, inventory
@@ -10,7 +10,8 @@ a Claude assistant and a Shopify integration.
 
 Since the first build, the container images are built and run in CI, the runtime uses a restricted database role,
 S3 storage is exercised against MinIO, and password reset, organisation settings, a whole-platform test, a gated load
-test and a secret scan were added.
+test and a secret scan were added. The first roadmap round added suppliers, purchase orders (draft to received, with
+drafts from reorder suggestions), planner forecast overrides scored against actual sales, and an overstock report.
 
 It is suitable for a **staging trial on synthetic or consented data**. It is not yet ready for production use with
 real customer data: neither the Anthropic nor the Shopify integration has run against the real service, it has never
@@ -21,9 +22,9 @@ no external security review. The sections below give the evidence.
 
 | Check | Result |
 |---|---|
-| Backend tests (pytest, PostgreSQL), incl. the whole-platform flow | 319 passed |
-| Frontend unit tests (Vitest) | 137 passed |
-| Browser E2E (Playwright, live worker) | CI on PR #1 |
+| Backend tests (pytest, PostgreSQL), incl. the whole-platform flow | 360 passed |
+| Frontend unit tests (Vitest) | 148 passed |
+| Browser E2E (Playwright, live worker) | 11 passed locally; CI on PR #1 |
 | Containers: images, Compose stack, restricted DB role, MinIO, smoke test with training, Locust smoke | CI on PR #1 |
 | Lint, format, migration drift (`alembic check`), production build | clean |
 | Dependency audit (pip-audit, npm audit high) | CI on PR #1 |
@@ -62,6 +63,7 @@ Each item is covered by an automated test unless marked otherwise.
 
 ## Known limitations
 - Anthropic and Shopify are verified only against fakes. Railway/Vercel config has not been deployed.
+- Purchase orders are not e-mailed to suppliers, and stock is tracked for one location per product.
 - Shopify order edits are not reconciled; Shopify and uploaded sales for the same days are summed.
 - Transformer training is CPU-bound and slow for large catalogues. The first forecast after new data takes seconds.
 - Load results so far come from one small machine and say nothing about capacity.

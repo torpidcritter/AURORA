@@ -71,6 +71,14 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Backup script (`scripts/backup.sh`) with restore drill; deployment, upgrade and rollback runbook
 - [x] Release report (`docs/RELEASE_REPORT.md`)
 
+## P9 Planning features (roadmap round 1, 2026-10-27)
+- [x] Suppliers, with supplier lead time as a fallback for products (ADR-031)
+- [x] Purchase orders: draft, approve, send, partial receive, cancel; drafts from reorder suggestions; CSV export (ADR-031)
+- [x] Planner forecast overrides applied to decisions and scored against actuals (forecast value added, ADR-032)
+- [x] Overstock and dead-stock report (ADR-033)
+- [ ] E-mailing purchase orders to suppliers (needs an e-mail provider)
+- [ ] Next roadmap items: multi-location stock, product hierarchy forecasts, scheduled reports
+
 ## Follow-ups
 - [x] Build and run images in CI
 - [ ] Container image scan (registry-side, ADR-026)

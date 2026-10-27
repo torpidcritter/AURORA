@@ -296,3 +296,39 @@ The spec names files that do not exist here; the responsibilities live in these 
 - Kept global on purpose: the validation WAPE gate for promotion (model quality is a platform rule) and the live
   accuracy window.
 
+
+## ADR-031 Suppliers and purchase orders
+- A supplier holds contacts, a lead time and a minimum order value. A product links to at most one supplier; its own
+  lead time wins, then the supplier's, then the organisation default (the recommendation lists which one was used).
+- Orders move draft → approved → sent → (partially received →) received, or are cancelled before they are fully
+  received. Lines change only in a draft. Approval is a separate permission (`approve_purchase_orders`, analyst and
+  admin) from creating, sending and receiving (`manage_purchasing`, operator and up), so one person need not do both.
+- Stock moves only on `send` (quantities added to `on_order`) and `receive` (moved from `on_order` to `on_hand`);
+  cancelling a sent order removes only what is still outstanding. Every transition locks the order row and checks the
+  version the user saw, and products are locked in id order, so double clicks and concurrent orders cannot apply a
+  change twice or deadlock. Order numbers are serialised per organisation on its row, with a unique constraint behind.
+- "Mark as sent" records a fact; Aurora does not e-mail suppliers (no e-mail provider, see ADR-029). The CSV export
+  neutralises cells that start with `=`, `+`, `-`, `@`, tab or carriage return so a spreadsheet will not run them.
+- Drafting from suggestions uses the same recommendations as the inventory page, one draft per supplier (products
+  without a supplier share one draft), and skips products already on a draft or approved order. Sent orders are not
+  skipped because their stock is already counted in `on_order`. Each line keeps the suggestion it came from.
+
+## ADR-032 Planner forecast overrides and forecast value added
+- An override covers a date range of one product and either sets demand to a number of units per day or scales the
+  model's forecast. A reason is required, ranges per product may not overlap (checked under a product row lock), and
+  an override can be archived but not edited or deleted, so its history stays reviewable.
+- Overrides are applied where forecasts feed decisions (reorder maths, risk, suggested orders) and shown beside the
+  model forecast in `POST /forecast` (`adjusted_points`, `overrides`). The stored model forecast is never rewritten,
+  and adjusted days drop the interval bounds, which describe the model's error rather than the planner's.
+- Forecast value added (FVA) scores each override on the days it covered that now have actual sales: model WAPE (from
+  the freshest forecast served before each day, as in live accuracy, ADR-028) minus override WAPE, in percentage
+  points. More than +0.5 counts as helped, below −0.5 as hurt. Future overrides are listed as pending.
+- Scenarios (ADR-011) are unchanged: they remain what-if views and never change stored or decision forecasts.
+
+## ADR-033 Overstock and dead-stock report
+- Computed on request from the trailing 90 days of sales relative to the organisation's latest sales date, like the
+  KPIs. Days of cover = on hand ÷ average daily sales. Excess = stock above `cover_days` (default 180) of that demand.
+  Dead stock = no sale in `dead_days` (default 90), or never. Products with unknown inventory or nothing on hand are
+  left out.
+- Suggestions are descriptive (pause reordering, review stock on order, consider clearance). Aurora has no price or
+  elasticity data, so it does not propose discounts or predict their effect.

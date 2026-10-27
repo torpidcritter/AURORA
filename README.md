@@ -12,7 +12,11 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Forecasting:** five statistical baselines and a Transformer, chosen per product by rolling-origin backtests;
   split-conformal prediction intervals; MC-dropout uncertainty; permutation feature importance.
 - **Inventory:** safety stock, reorder point and quantity (pack size, MOQ), days until stock-out, stock-out
-  probability, urgency, a risk matrix and what-if scenarios.
+  probability, urgency, a risk matrix and what-if scenarios; an overstock and dead-stock report.
+- **Purchasing:** suppliers, purchase orders from draft to received (with approval, partial receipts and CSV export),
+  and drafts built from the reorder suggestions.
+- **Planner overrides:** adjust the forecast used for decisions over a date range, and see whether each adjustment
+  beat the model once actual sales arrive.
 - **Operations:** background training and batch forecasting, a model registry with a promotion gate and rollback,
   drift and accuracy monitoring, deduplicated alerts.
 - **Access:** organisations (tenants), four roles enforced by the API, audit log, rate limits.

@@ -100,7 +100,8 @@ CI checks that the models and migrations agree (`alembic check`).
 ## 5. Rollback
 
 - **Application:** rebuild or retag the previous images and `docker compose up -d`.
-  Migrations `0002` and `0003` only add a table and columns. Before downgrading, restore the pre-upgrade backup rather
+  Migrations `0002` and `0003` only add a table and columns; `0005` adds the supplier, purchase order and override
+  tables and a nullable `products.supplier_id`, so code from before it still runs against the upgraded schema. Before downgrading, restore the pre-upgrade backup rather
   than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.
@@ -192,6 +193,8 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | A user is locked out or forgot their password | *Users* page, audit log `auth.login` failures | An admin opens *Users*, chooses *Reset link* and passes the link on over a trusted channel (it is shown once, works once and expires after `PASSWORD_RESET_TTL_MINUTES`, default 60). Admins cannot issue one for themselves, so keep at least two admin accounts: there is no command-line recovery for a sole admin who forgot their password yet |
 | "This reset link is invalid" | Audit log `auth.password_reset` failures show the real reason (expired, used, superseded, inactive user) | Issue a new link; issuing one cancels older ones |
 | Alerts appear in the app but not in the webhook | *Settings* minimum severity, `ALERT_MIN_SEVERITY` | Only alerts at or above the organisation's minimum (default `high`) are sent to channels; lower ones stay in the app |
+| Stock on order looks wrong after purchasing | *Purchase orders* (filter *Open*), audit log `purchase_order.*` | `on_order` changes only when an order is sent, received or cancelled. Correct a mistake by cancelling the order (releases what is outstanding) or editing the product's stock, which is audited |
+| "The order was changed by someone else" | Someone acted on the same order | Reload the order and check it before trying again; nothing was applied |
 | Assistant says it is in fallback mode | Key missing, refused, or API error | Check `ANTHROPIC_API_KEY` and API logs. The fallback answers are deterministic and use the same authorised data |
 
 ## 10. Housekeeping
