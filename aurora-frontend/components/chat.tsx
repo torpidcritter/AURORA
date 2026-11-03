@@ -5,14 +5,17 @@ import { createContext, useContext, useEffect, useId, useRef, useState, type For
 
 import { Badge, Button, Notice } from "@/components/ui";
 import { api } from "@/lib/api";
-import type { ChatResponse } from "@/lib/types";
+import Link from "next/link";
+
+import { proposalOutcome } from "@/lib/proposals";
+import type { AssistantProposal, ChatResponse } from "@/lib/types";
 
 /** Shared pieces of the assistant: the /assistant page and the floating ChatPanel both use them. */
 
 export interface ChatMsg {
   role: "user" | "assistant";
   content: string;
-  meta?: Pick<ChatResponse, "mode" | "tool_calls" | "notice">;
+  meta?: Pick<ChatResponse, "mode" | "tool_calls" | "notice" | "proposals">;
 }
 
 export interface ChatTurn {
@@ -25,6 +28,7 @@ export const CHAT_SUGGESTIONS = [
   "Summarise open alerts",
   "Is any product's demand drifting?",
   "What should I reorder this week?",
+  "Draft orders for the most urgent products",
 ];
 /** Limits enforced by POST /chat (ChatIn): message length, history turns and the length of one turn. */
 export const CHAT_MAX_LEN = 2000;
@@ -66,7 +70,7 @@ function useChatState(): ChatState {
     setBusy(true);
     postChat(message, history)
       .then((r) =>
-        setMsgs((m) => [...m, { role: "assistant", content: r.answer, meta: { mode: r.mode, tool_calls: r.tool_calls, notice: r.notice } }]),
+        setMsgs((m) => [...m, { role: "assistant", content: r.answer, meta: { mode: r.mode, tool_calls: r.tool_calls, notice: r.notice, proposals: r.proposals ?? [] } }]),
       )
       .catch((e: unknown) => setError(e))
       .finally(() => {
@@ -95,6 +99,48 @@ export function useChat(): ChatState {
   return shared ?? local;
 }
 
+/** A change the assistant proposed. Only the buttons here make it happen; the server checks the role again. */
+export function ProposalCard({ proposal }: { proposal: AssistantProposal }) {
+  const [p, setP] = useState(proposal);
+  const [busy, setBusy] = useState<"apply" | "dismiss" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const decide = async (action: "apply" | "dismiss") => {
+    setBusy(action);
+    setError(null);
+    try {
+      setP(await api<AssistantProposal>(`/assistant/proposals/${p.id}/${action}`, { method: "POST" }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That did not work. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  const outcome = proposalOutcome(p);
+  return (
+    <div className="mt-3 rounded-lg border border-primary/40 bg-bg/60 p-3" role="group" aria-label="Proposed change">
+      <div className="mb-1 text-xs font-medium uppercase tracking-wide text-faint">Proposed change · needs your confirmation</div>
+      <p className="text-sm text-ink">{p.summary}</p>
+      {p.status === "pending" ? (
+        <div className="mt-2 flex gap-2">
+          <Button onClick={() => decide("apply")} loading={busy === "apply"} disabled={busy !== null}>Confirm change</Button>
+          <Button variant="ghost" onClick={() => decide("dismiss")} loading={busy === "dismiss"} disabled={busy !== null}>Dismiss proposal</Button>
+        </div>
+      ) : (
+        <p className="mt-2 text-sm text-muted" role="status">
+          {outcome.text}{" "}
+          {outcome.links.map((l, i) => (
+            <span key={l.href}>
+              {i > 0 && ", "}
+              <Link href={l.href} className="text-primary hover:underline">{l.label}</Link>
+            </span>
+          ))}
+        </p>
+      )}
+      {error && <p className="mt-2 text-sm text-bad" role="alert">{error}</p>}
+    </div>
+  );
+}
+
 function Bubble({ m }: { m: ChatMsg }) {
   return (
     <div className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
@@ -106,6 +152,7 @@ function Bubble({ m }: { m: ChatMsg }) {
         }
       >
         <div className="whitespace-pre-wrap break-words">{m.content}</div>
+        {m.meta?.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} />)}
         {m.meta && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-faint">
             <Badge tone={m.meta.mode === "claude" ? "ai" : "default"}>{m.meta.mode === "claude" ? "Claude" : "Built-in summary"}</Badge>

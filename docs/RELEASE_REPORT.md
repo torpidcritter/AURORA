@@ -15,7 +15,7 @@ drafts from reorder suggestions), planner forecast overrides scored against actu
 locations with transfers and a delivery location on purchase orders, then category forecasts that add up to the
 product forecasts and scheduled digests to the app, Slack, webhooks or e-mail. The third round started with a
 budget planner for purchase orders, quantity price breaks, supplier reliability measured from purchase orders, and
-audit log export with per-organisation retention, two-factor login with an authenticator app, team invitations with a getting-started checklist, data export with account and organisation deletion, API keys with signed outgoing webhooks, launch plans for new products, and promotions that are measured afterwards and raise planned demand beforehand.
+audit log export with per-organisation retention, two-factor login with an authenticator app, team invitations with a getting-started checklist, data export with account and organisation deletion, API keys with signed outgoing webhooks, launch plans for new products, promotions that are measured afterwards and raise planned demand beforehand, and assistant actions that the user confirms.
 
 It is suitable for a **staging trial on synthetic or consented data**. It is not yet ready for production use with
 real customer data: neither the Anthropic nor the Shopify integration has run against the real service, it has never
@@ -26,9 +26,9 @@ no external security review. The sections below give the evidence.
 
 | Check | Result |
 |---|---|
-| Backend tests (pytest, PostgreSQL), incl. the whole-platform flow | 494 passed |
-| Frontend unit tests (Vitest) | 197 passed |
-| Browser E2E (Playwright, live worker) | 22 passed locally; CI on PR #1 |
+| Backend tests (pytest, PostgreSQL), incl. the whole-platform flow | 501 passed |
+| Frontend unit tests (Vitest) | 200 passed |
+| Browser E2E (Playwright, live worker) | 23 passed locally; CI on PR #1 |
 | Containers: images, Compose stack, restricted DB role, MinIO, smoke test with training, Locust smoke | CI on PR #1 |
 | Lint, format, migration drift (`alembic check`), production build | clean |
 | Dependency audit (pip-audit, npm audit high) | CI on PR #1 |
@@ -53,7 +53,9 @@ Each item is covered by an automated test unless marked otherwise.
 - Uploads: type sniffing, size and row limits, zip-bomb guard.
 - Shopify: validated shop domain, single-use OAuth state, constant-time HMAC checks, replay window, idempotent delivery,
   tokens encrypted at rest with rotatable keys, GDPR redaction.
-- Assistant: read-only tools that run as the caller, permission re-checked per call, question text not stored.
+- Assistant: tools that run as the caller, permission re-checked per call, question text not stored. It can only
+  propose changes (draft orders, alert acknowledgements, overrides); the user confirms each, and the permission is
+  checked again then (ADR-046).
 - Secrets come only from the environment; production mode refuses default secrets and wildcard CORS. A CI job scans
   tracked files for credentials and for secret-looking `NEXT_PUBLIC_*` names (a guard, not a full history scan).
 - Not done: penetration test, OS-package scan of the images, dependency pinning by hash, WAF or bot protection.

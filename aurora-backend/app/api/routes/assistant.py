@@ -1,8 +1,9 @@
-"""Inventory assistant endpoint (Claude with read-only tools, deterministic fallback)."""
+"""Inventory assistant endpoint (Claude with permission-checked tools, deterministic fallback) and its proposals."""
 
 from __future__ import annotations
 
-from typing import Literal
+import uuid
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -12,7 +13,7 @@ from app.api.deps import Principal, require
 from app.core import rate_limit
 from app.core.security import Perm
 from app.db.session import get_db
-from app.services import assistant_service, audit
+from app.services import assistant_actions, assistant_service, audit
 
 router = APIRouter(tags=["assistant"])
 
@@ -32,11 +33,23 @@ class ToolCall(BaseModel):
     ok: bool
 
 
+class ProposalOut(BaseModel):
+    id: str
+    kind: str
+    summary: str
+    status: str
+    result: dict[str, Any] | None = None
+    created_at: str
+    expires_at: str
+    decided_at: str | None = None
+
+
 class ChatOut(BaseModel):
     answer: str
     mode: Literal["claude", "fallback"]
     tool_calls: list[ToolCall]
     notice: str | None = None
+    proposals: list[ProposalOut] = Field(default_factory=list)
 
 
 @router.post("/chat", response_model=ChatOut)
@@ -66,3 +79,31 @@ def chat(body: ChatIn, p: Principal = Depends(require(Perm.read)), db: Session =
     )
     db.commit()
     return res
+
+
+# --- proposals (ADR-046): the assistant proposes, the person decides ----------------------------------------------
+
+
+@router.get("/assistant/proposals", response_model=list[ProposalOut])
+def pending_proposals(p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)) -> list[dict]:
+    """The caller's own unconfirmed proposals."""
+    return [assistant_actions.out(r) for r in assistant_actions.list_pending(db, p)]
+
+
+@router.post("/assistant/proposals/{proposal_id}/apply", response_model=ProposalOut)
+def apply_proposal(
+    proposal_id: uuid.UUID, p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)
+) -> dict:
+    """Confirm a proposal. The role needed for the change itself is checked inside, at confirmation time."""
+    row = assistant_actions.apply(db, p, proposal_id)
+    db.commit()
+    return assistant_actions.out(row)
+
+
+@router.post("/assistant/proposals/{proposal_id}/dismiss", response_model=ProposalOut)
+def dismiss_proposal(
+    proposal_id: uuid.UUID, p: Principal = Depends(require(Perm.read)), db: Session = Depends(get_db)
+) -> dict:
+    row = assistant_actions.dismiss(db, p, proposal_id)
+    db.commit()
+    return assistant_actions.out(row)

@@ -89,7 +89,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] API keys for other systems and signed outgoing webhooks with retries (ADR-043, docs/WEBHOOKS.md)
 - [x] Launch plans: new products forecast from analogue products, corrected by early sales (ADR-044)
 - [x] Promotions: past ones measured, planned ones estimated and applied to planning (ADR-045)
-- [ ] Next roadmap items: assistant actions, PDF reports, observability, UX polish, connectors;
+- [x] Assistant actions: draft orders, alert acknowledgements and overrides proposed by the assistant, confirmed by the user (ADR-046)
+- [ ] Next roadmap items: PDF reports, observability, UX polish, connectors;
   per-location demand needs sales by location
 
 ## Follow-ups

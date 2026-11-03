@@ -100,11 +100,13 @@ def test_claude_tool_loop_scoped_to_caller_org(client, org, other_org, with_key,
         "mode": "claude",
         "tool_calls": [{"tool": "list_products", "ok": True}],
         "notice": None,
+        "proposals": [],
     }
     first, second = msgs.calls
     assert first["model"] == get_settings().anthropic_model
     assert first["fallbacks"] == "default" and first["betas"] == [assistant_service.FALLBACK_BETA]
-    assert {t["name"] for t in first["tools"]} == set(assistant_service.TOOLS)
+    # A viewer gets the read tools only; proposal tools need the role that could make the change.
+    assert {t["name"] for t in first["tools"]} == {n for n in assistant_service.TOOLS if not n.startswith("propose_")}
     result = second["messages"][-1]["content"][0]
     assert result["type"] == "tool_result" and result["tool_use_id"] == "tu_1"
     data = json.loads(result["content"])

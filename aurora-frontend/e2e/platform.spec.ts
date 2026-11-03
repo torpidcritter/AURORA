@@ -341,6 +341,16 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByText(/Built-in summary|Claude/).first()).toBeVisible();
   });
 
+  test("an assistant proposal changes nothing until decided", async () => {
+    await page.goto("/assistant");
+    await page.getByLabel("Message").fill("Please acknowledge the open alerts");
+    await page.getByRole("button", { name: "Send" }).click();
+    const card = page.getByRole("log").getByRole("group", { name: "Proposed change" }).last();
+    await expect(card).toContainText(/Acknowledge \d+ open alert/, { timeout: 60_000 });
+    await card.getByRole("button", { name: "Dismiss proposal" }).click();
+    await expect(card.getByRole("status")).toHaveText("Dismissed. Nothing was changed.");
+  });
+
   test("the audit log exports as CSV and records the export", async () => {
     await page.goto("/admin/audit");
     await expect(page.getByRole("table", { name: "Audit events" })).toBeVisible();

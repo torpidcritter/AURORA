@@ -135,7 +135,8 @@ The product reference is `Aurora_Technology_Architecture_and_Specifications.pdf`
 ## ADR-015 Assistant: Claude with read-only, permission-checked tools and a deterministic fallback
 - `POST /chat` runs a manual tool loop (at most 5 rounds) over four read tools: products, risk summary,
   alerts, drift. Each tool runs as the calling user, inside their organisation, and re-checks the permission even
-  though the tool list is already filtered by role. The model cannot write data.
+  though the tool list is already filtered by role. The model cannot write data. (Since ADR-046 it can also propose
+  three changes, which only the user can confirm.)
 - Model `claude-opus-5-5` with `effort` configurable (default low) and the server-side fallback beta enabled, so an
   overloaded model falls back on Anthropic's side before our own fallback is needed.
 - Without an API key, or on a refusal, an empty answer or an API error, the endpoint answers from deterministic
@@ -563,3 +564,26 @@ The spec names files that do not exist here; the responsibilities live in these 
   scoped to the organisation.
 - Not done: promotion effects are not yet fed to the models as a training feature (the history still contains the
   spikes), and cannibalisation of products not on promotion is not modelled.
+
+## ADR-046 Assistant actions: the assistant proposes, the person confirms
+- Three `propose_*` tools let the assistant prepare changes the user asked for: draft purchase orders (by SKU, with
+  the suggested quantities or given ones), acknowledging open alerts (by the ids `get_alerts` now returns), and a
+  forecast override (set or scale, dates, reason). A tool is offered only to users whose role could make the change
+  themselves (`manage_purchasing`, `acknowledge_alerts`, `manage_overrides`), and never to API keys.
+- A proposal tool changes nothing. It validates the input against the user's organisation (unknown SKUs and alerts
+  come back to the model as tool errors so it can correct itself), stores an `assistant_proposals` row and returns
+  a summary written by the server from resolved values, never the model's wording. The chat response carries the
+  proposals; the app shows each with "Confirm change" and "Dismiss proposal". Unconfirmed ones are listed on the
+  assistant page.
+- Confirming (`POST /assistant/proposals/{id}/apply`) is allowed only for the user it was proposed to, once, within
+  24 hours. The permission is checked again at that moment, then the same service code as the matching screen runs
+  in a savepoint, with the same audit events plus `via: assistant`. A business error (an overlapping override, say)
+  rolls the change back and marks the proposal failed with the reason. Drafted orders are never approved or sent.
+- Why not let the model act directly: tool results contain user-typed text (product names, alert titles), so a
+  prompt injection could otherwise make changes. Here the worst it can do is put a visible proposal in front of the
+  user, who decides. The system prompt also tells the model to propose only what the user asked for.
+- Limits: 20 unconfirmed proposals per user, 50 products per draft, 25 alerts per acknowledgement. Proposals are
+  audited (`assistant.action_proposed`, `_applied`, `_dismissed`, `_failed`), included in the organisation export and
+  deleted by the nightly purge after 30 days. API keys cannot reach `/assistant/` at all.
+- The deterministic fallback (no API key, or Claude unavailable) also proposes for plain requests: "acknowledge
+  ... alerts" proposes the open alerts, "draft orders" proposes the most urgent products that need reordering.

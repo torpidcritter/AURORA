@@ -65,6 +65,7 @@ EXPORT_TABLES: tuple[type, ...] = (
     m.ForecastOverride,
     m.ProductLaunch,
     m.Promotion,
+    m.AssistantProposal,
     m.ExternalSignal,
     m.Alert,
     m.Dataset,

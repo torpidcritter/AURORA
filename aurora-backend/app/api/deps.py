@@ -95,7 +95,7 @@ def get_principal(
 
 
 # API keys are for data, not for managing people, keys or the organisation itself (ADR-043).
-KEY_BLOCKED_PREFIXES = ("/auth/", "/users", "/api-keys", "/organisation/", "/data/")
+KEY_BLOCKED_PREFIXES = ("/auth/", "/users", "/api-keys", "/organisation/", "/data/", "/assistant/")
 
 
 def _key_principal(request: Request, token: str, db: Session) -> Principal:

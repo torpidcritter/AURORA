@@ -23,7 +23,7 @@ from app.db.models import (
     WebhookEndpoint,
     WebhookEvent,
 )
-from app.services import audit, settings_service, webhooks
+from app.services import assistant_actions, audit, settings_service, webhooks
 
 # Revoked or rotated refresh tokens are kept until they expire: reuse detection needs them. After expiry a reused
 # token is rejected anyway, so one extra day of grace is plenty.
@@ -62,6 +62,8 @@ def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
     counts["invitations"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
     # Outgoing webhook deliveries that finished more than 30 days ago (ADR-043).
     counts["webhook_deliveries"] = webhooks.purge_old(db, now)
+    # Assistant proposals older than 30 days, whatever their outcome (ADR-046); the audit log keeps the record.
+    counts["assistant_proposals"] = assistant_actions.purge_old(db, now)
     db.commit()
     return counts
 

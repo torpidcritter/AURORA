@@ -484,6 +484,19 @@ export interface ChatResponse {
   mode: "claude" | "fallback";
   tool_calls: { tool: string; ok: boolean }[];
   notice?: string | null;
+  proposals?: AssistantProposal[];
+}
+
+/** A change the assistant proposed; nothing happens until the user confirms it (ADR-046). */
+export interface AssistantProposal {
+  id: string;
+  kind: "draft_purchase_orders" | "acknowledge_alerts" | "add_forecast_override";
+  summary: string;
+  status: "pending" | "applied" | "dismissed" | "failed" | "expired";
+  result?: Record<string, unknown> | null;
+  created_at: string;
+  expires_at: string;
+  decided_at?: string | null;
 }
 
 export type SettingValue = number | string;

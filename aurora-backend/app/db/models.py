@@ -784,3 +784,27 @@ class Promotion(TimestampMixin, Base):
     notes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class AssistantProposal(TimestampMixin, Base):
+    """A change the assistant proposed (ADR-046). Nothing happens until the user it was proposed to confirms it;
+    the change then runs through the normal, permission-checked and audited code path."""
+
+    __tablename__ = "assistant_proposals"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'applied', 'dismissed', 'failed')", name="ck_assistant_proposals_status"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    summary: Mapped[str] = mapped_column(String(1000), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

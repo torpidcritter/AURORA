@@ -26,8 +26,8 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Access:** organisations (tenants), invitations by link, a getting-started checklist, four roles enforced by the API, optional or required two-factor login with
   an authenticator app, an audit log with CSV/JSON Lines export and
   per-organisation retention, full data export, account deletion and scheduled organisation deletion, rate limits.
-- **Integrations:** API keys for other systems and signed outgoing webhooks (`docs/WEBHOOKS.md`), an assistant that answers questions with Claude over read-only, permission-checked tools (with a
-  deterministic fallback), and Shopify install plus signed order webhooks.
+- **Integrations:** API keys for other systems and signed outgoing webhooks (`docs/WEBHOOKS.md`), an assistant that answers questions with Claude over permission-checked tools and can propose draft orders,
+  alert acknowledgements and overrides for the user to confirm (with a deterministic fallback), and Shopify install plus signed order webhooks.
 
 ## Layout
 ```
