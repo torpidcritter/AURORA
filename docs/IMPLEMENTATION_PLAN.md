@@ -92,7 +92,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Assistant actions: draft orders, alert acknowledgements and overrides proposed by the assistant, confirmed by the user (ADR-046)
 - [x] PDF purchase orders and inventory report; saved views for list pages (ADR-047)
 - [x] Observability: alert rules, Grafana dashboard, job and webhook health metrics, optional Sentry with scrubbing (ADR-048)
-- [ ] Next roadmap items: UX polish, connectors;
+- [x] UX polish: light theme, keyboard shortcuts, low-stock browser notifications, number and date formats, phone layout fixes (ADR-049, docs/UX.md)
+- [ ] Next roadmap items: connectors;
   per-location demand needs sales by location
 
 ## Follow-ups

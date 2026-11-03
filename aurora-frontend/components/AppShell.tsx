@@ -35,13 +35,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import useSWR from "swr";
 
 import { ChatProvider } from "@/components/chat";
 import { ChatPanel, isChatPanelHidden } from "@/components/ChatPanel";
 import { DeletionBanner } from "@/components/DataRights";
+import { KeyboardShortcuts, LowStockNotifier, ThemeToggle } from "@/components/Preferences";
 import { fetcher } from "@/lib/api";
+import { markHydrated } from "@/lib/format";
+import { DEFAULT_LOCALE, readLocale } from "@/lib/preferences";
 import { useSession } from "@/lib/session";
 
 interface NavItem {
@@ -110,11 +113,22 @@ const NAV: { section: string; items: NavItem[] }[] = [
   },
 ];
 
+const noopSubscribe = () => () => {};
+// While hydrating, React renders the server value and calls this only afterwards; on a client-side mount nothing is
+// hydrated. Either way, from this call on formatting may use the saved locale.
+function clientLocale(): string {
+  markHydrated();
+  return readLocale();
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { me, can } = useSession();
   const [open, setOpen] = useState(false);
+  // Numbers render with the default locale until mount (so hydration matches), then the page redraws once in the
+  // saved locale. Keyed on the locale so every formatted value below re-renders.
+  const fmtKey = useSyncExternalStore(noopSubscribe, clientLocale, () => DEFAULT_LOCALE);
   const { data: summary } = useSWR<{ open: number; by_severity: Record<string, number> }>("/alerts/summary", fetcher, {
     refreshInterval: 60_000,
   });
@@ -174,7 +188,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <ChatProvider>
       <div className="min-h-screen lg:grid lg:grid-cols-[240px_1fr]">
-        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1 focus:text-slate-950">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1 focus:text-on-accent">
           Skip to content
         </a>
         <aside className="glass sticky top-0 hidden h-screen overflow-y-auto border-r border-glass-line lg:block">
@@ -202,7 +216,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             </button>
             <div className="min-w-0 flex-1 truncate text-sm text-muted">{me?.org_name}</div>
             {me && (
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-2 text-sm sm:gap-3">
+                <ThemeToggle />
                 <Link href="/account" className="hidden text-muted hover:text-ink hover:underline sm:inline" title="Account and security">{me.email}</Link>
                 <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs capitalize text-ink ring-1 ring-line">{me.role}</span>
                 <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-muted hover:bg-surface-2 hover:text-ink">
@@ -212,12 +227,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             )}
           </header>
           {/* Extra bottom padding keeps the assistant launcher from covering the end of the page. */}
-          <main id="main" className={clsx("mx-auto w-full max-w-[1400px] px-4 pt-6 sm:px-6", isChatPanelHidden(pathname) ? "pb-6" : "pb-24")}>
+          <main key={fmtKey} id="main" className={clsx("mx-auto w-full max-w-[1400px] px-4 pt-6 sm:px-6", isChatPanelHidden(pathname) ? "pb-6" : "pb-24")}>
             {me?.org_deletion_due_at && <DeletionBanner dueAt={me.org_deletion_due_at} />}
             {children}
           </main>
         </div>
         <ChatPanel />
+        <KeyboardShortcuts />
+        <LowStockNotifier />
       </div>
     </ChatProvider>
   );

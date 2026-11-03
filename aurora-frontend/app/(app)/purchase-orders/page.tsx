@@ -139,7 +139,7 @@ export default function PurchaseOrdersPage() {
               </thead>
               <tbody>
                 {list.data.items.map((o) => (
-                  <tr key={o.id} className="hover:bg-white/5">
+                  <tr key={o.id} className="hover:bg-hover">
                     <Td>
                       <Link href={`/purchase-orders/${o.id}`} className="font-medium text-primary hover:underline">{o.number}</Link>
                       {o.source === "suggested" && <div className="text-xs text-faint">from suggestions</div>}

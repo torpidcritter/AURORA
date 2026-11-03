@@ -625,3 +625,27 @@ The spec names files that do not exist here; the responsibilities live in these 
   `SENTRY_TRACES_SAMPLE_RATE` is above 0.
 - Not done: no paging service is configured (that needs an account), there is no external uptime check, and
   OpenTelemetry tracing across the API and worker is not set up.
+
+## ADR-049 UX polish: light theme, keyboard shortcuts, low-stock notifications, number formats, phone layouts
+- Colours are design tokens (`app/globals.css`); components and charts use only tokens, so the light theme is one
+  block of token values, and "match system" applies it through `prefers-color-scheme`. The choice is per browser
+  (localStorage): it describes the device, not the account, and needs no API change. An inline script in `<head>`
+  sets `data-theme` before the first paint so a light-theme user sees no dark flash; it only reads one key and
+  falls back to dark, and the CSP already allows inline scripts (Next.js needs them).
+- Light colours were picked for at least 4.5:1 text contrast on white and on the secondary surface.
+- Keyboard shortcuts: "g" then a letter opens a page, "/" focuses the page's search box, "?" lists the shortcuts.
+  They never fire while typing in a field or with Ctrl, Alt or Cmd held, so browser and assistive-technology keys
+  keep working, and single letters on their own do nothing.
+- Low-stock notifications use the browser Notification API while an Aurora tab is open: every two minutes the tab
+  reads open stockout alerts (the existing alerts endpoint, same permissions) and raises one notification for new
+  high or critical ones. Alerts already open when they are turned on are not announced, and notified ids are
+  remembered so a reload does not repeat them. True web push (with every tab closed) needs a service worker, VAPID
+  keys and stored push subscriptions per device; it is left out until there is a deployment to hold those keys.
+  Digests remain the way to hear about stock when Aurora is closed.
+- "Multi-language" is scoped to number, currency and date formats in seven locales; the interface text stays in
+  English. Translating the interface needs a message catalogue across ~60 screens and translated server messages,
+  and is not done. Amounts are still shown in US dollars because organisations cannot yet set a currency.
+  Formatting uses the default locale for the server render and hydration, then the saved one, so markup matches.
+- Phone layouts: a check at 375 px found nine pages that scrolled sideways, caused by grid items growing to their
+  tables' minimum width and by screen-reader-only header text escaping table scroll boxes. Grid items now have
+  `min-width: 0` and table scroll boxes are positioned; a browser test checks four of those pages at 375 px.

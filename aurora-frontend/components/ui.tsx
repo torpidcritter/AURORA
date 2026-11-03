@@ -26,9 +26,9 @@ export function Button({
       aria-busy={loading || undefined}
       className={clsx(
         "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "bg-primary text-slate-950 hover:bg-sky-300",
-        variant === "secondary" && "border border-line bg-surface-2 text-ink hover:bg-slate-800",
-        variant === "danger" && "bg-bad/90 text-slate-950 hover:bg-bad",
+        variant === "primary" && "bg-primary text-on-accent hover:bg-primary/85",
+        variant === "secondary" && "border border-line bg-surface-2 text-ink hover:bg-hover",
+        variant === "danger" && "bg-bad/90 text-on-accent hover:bg-bad",
         variant === "ghost" && "text-muted hover:bg-surface-2 hover:text-ink",
         className,
       )}
@@ -94,10 +94,10 @@ export function Stat({ label, value, hint, tone = "default", title }: { label: s
 
 const RISK_STYLE: Record<string, string> = {
   critical: "bg-bad/15 text-bad ring-bad/30",
-  high: "bg-orange-400/15 text-orange-300 ring-orange-400/30",
+  high: "bg-chart-high/15 text-chart-high ring-chart-high/30",
   medium: "bg-warn/15 text-warn ring-warn/30",
   low: "bg-ok/15 text-ok ring-ok/30",
-  unknown: "bg-slate-500/15 text-slate-300 ring-slate-400/30",
+  unknown: "bg-muted/15 text-muted ring-muted/30",
 };
 
 export function RiskBadge({ level }: { level: RiskLevel | Severity | string }) {
@@ -113,7 +113,7 @@ export function Badge({ children, tone = "default" }: { children: ReactNode; ton
     <span
       className={clsx(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
-        tone === "default" && "bg-slate-500/15 text-slate-300 ring-slate-400/25",
+        tone === "default" && "bg-muted/15 text-muted ring-muted/25",
         tone === "ok" && "bg-ok/15 text-ok ring-ok/30",
         tone === "warn" && "bg-warn/15 text-warn ring-warn/30",
         tone === "bad" && "bg-bad/15 text-bad ring-bad/30",
@@ -157,7 +157,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx("animate-pulse rounded-md bg-slate-700/30", className)} aria-hidden />;
+  return <div className={clsx("animate-pulse rounded-md bg-muted/15", className)} aria-hidden />;
 }
 
 export function LoadingBlock({ rows = 3, label = "Loading" }: { rows?: number; label?: string }) {
@@ -204,10 +204,10 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "ok" | "wa
       role={tone === "bad" ? "alert" : "status"}
       className={clsx(
         "rounded-lg border px-3 py-2 text-sm",
-        tone === "info" && "border-primary/30 bg-primary/10 text-sky-200",
-        tone === "ok" && "border-ok/30 bg-ok/10 text-emerald-200",
-        tone === "warn" && "border-warn/30 bg-warn/10 text-amber-200",
-        tone === "bad" && "border-bad/30 bg-bad/10 text-rose-200",
+        tone === "info" && "border-primary/30 bg-primary/10 text-ink",
+        tone === "ok" && "border-ok/30 bg-ok/10 text-ink",
+        tone === "warn" && "border-warn/30 bg-warn/10 text-ink",
+        tone === "bad" && "border-bad/30 bg-bad/10 text-ink",
       )}
     >
       {children}
@@ -219,7 +219,7 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
     <div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-700/40" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-muted/20" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
         <div className="h-full rounded-full bg-ai transition-all" style={{ width: `${pct}%` }} />
       </div>
       <div className="tabular mt-1 text-xs text-muted">{pct}%</div>
@@ -228,8 +228,10 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
 }
 
 export function Table({ children, caption }: { children: ReactNode; caption?: string }) {
+  // relative: screen-reader-only text in header cells is absolutely positioned and must stay inside this scroll box,
+  // or it widens the page on a phone.
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div className="relative -mx-4 overflow-x-auto sm:mx-0">
       <table className="w-full min-w-[640px] border-collapse text-sm">
         {caption && <caption className="sr-only">{caption}</caption>}
         {children}

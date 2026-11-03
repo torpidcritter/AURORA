@@ -6,7 +6,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, Field, Input, LoadingBlock, Notice, Table, Td, Th } from "@/components/ui";
 import { api, apiDownload, saveBlob } from "@/lib/api";
 import { daysUntil, exportRows, exportState } from "@/lib/dataRights";
-import { fmtBytes, fmtDate, fmtDateTime } from "@/lib/format";
+import { fmtBytes, fmtDate, fmtDateTime, fmtInt } from "@/lib/format";
 import { useSession } from "@/lib/session";
 import type { DeletionSchedule, Job } from "@/lib/types";
 
@@ -75,7 +75,7 @@ export function DataExportCard() {
                   <Td>
                     <Badge tone={s.downloadable ? "ok" : s.label === "Preparing" ? "info" : s.label === "Expired" ? "default" : "bad"}>{s.label}</Badge>
                   </Td>
-                  <Td className="text-right tabular-nums">{s.downloadable ? exportRows(j).toLocaleString() : "–"}</Td>
+                  <Td className="text-right tabular-nums">{s.downloadable ? fmtInt(exportRows(j)) : "–"}</Td>
                   <Td className="text-right tabular-nums">{bytes != null ? fmtBytes(bytes) : "–"}</Td>
                   <Td className="text-right">
                     {s.downloadable && (

@@ -107,7 +107,7 @@ export default function InventoryPage() {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.product_id} className="hover:bg-white/5">
+                <tr key={r.product_id} className="hover:bg-hover">
                   <Td>
                     <Link className="font-medium text-primary hover:underline" href={`/products/${r.product_id}`}>{r.sku}</Link>
                     <div className="text-xs text-faint">{r.name}</div>

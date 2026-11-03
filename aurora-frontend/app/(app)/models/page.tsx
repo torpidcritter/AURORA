@@ -107,7 +107,7 @@ export default function ModelsPage() {
             </thead>
             <tbody>
               {registry.data.items.map((m) => (
-                <tr key={m.id} className={selected === m.id ? "bg-white/5" : undefined}>
+                <tr key={m.id} className={selected === m.id ? "bg-hover" : undefined}>
                   <Td><span className="font-mono text-xs">{m.version}</span></Td>
                   <Td><Badge tone={statusTone(m.status)}>{m.status}</Badge></Td>
                   <Td className="text-right tabular-nums">{fmtPctPoints(m.transformer_wape)}</Td>

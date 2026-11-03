@@ -103,7 +103,7 @@ export function ChatPanel() {
         aria-expanded={isOpen}
         aria-controls={isOpen ? panelId : undefined}
         title="Ask the assistant"
-        className="fixed bottom-4 right-4 z-30 inline-flex h-12 w-12 items-center justify-center rounded-full bg-ai text-slate-950 shadow-lg shadow-ai/25 ring-1 ring-white/10 transition-colors hover:bg-violet-300"
+        className="fixed bottom-4 right-4 z-30 inline-flex h-12 w-12 items-center justify-center rounded-full bg-ai text-on-accent shadow-lg shadow-ai/25 ring-1 ring-line transition-colors hover:bg-ai/85"
       >
         {isOpen ? <X className="h-5 w-5" aria-hidden /> : <Bot className="h-5 w-5" aria-hidden />}
       </button>

@@ -90,7 +90,7 @@ export default function ProductsPage() {
           </thead>
           <tbody>
             {rows.map((p) => (
-              <tr key={p.id} className="hover:bg-white/5">
+              <tr key={p.id} className="hover:bg-hover">
                 <Td>
                   <Link href={`/products/${p.id}`} className="font-medium text-primary hover:underline">{p.sku}</Link>
                 </Td>
@@ -143,6 +143,8 @@ export default function ProductsPage() {
           <label className="sr-only" htmlFor="pq">Search products</label>
           <Input
             id="pq"
+            type="search"
+            data-shortcut-search
             placeholder="Search SKU or name"
             value={q}
             onChange={(e) => {

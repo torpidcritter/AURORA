@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
 import { PersonalExportCard } from "@/components/DataRights";
+import { DisplayPreferencesCard } from "@/components/Preferences";
 import { TwoFactorCard } from "@/components/TwoFactor";
 import { Button, Card, ErrorState, Field, Input, Notice, PageHeader } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -54,6 +55,7 @@ export default function AccountPage() {
           </form>
           {me?.two_factor_required && <div className="mt-3"><Notice tone="info">Set up two-factor login first to reach the rest of Aurora.</Notice></div>}
         </Card>
+        <DisplayPreferencesCard />
         <PersonalExportCard />
       </div>
     </>

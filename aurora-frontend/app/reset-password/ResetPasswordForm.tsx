@@ -89,7 +89,7 @@ export function ResetPasswordForm() {
       {state.phase === "done" && (
         <>
           <Notice tone="ok">Your password was changed. Sign in with the new password.</Notice>
-          <Link href="/login" className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-slate-950 hover:bg-sky-300">
+          <Link href="/login" className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-accent hover:bg-primary/85">
             Sign in
           </Link>
         </>

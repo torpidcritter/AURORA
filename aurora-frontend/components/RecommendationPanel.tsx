@@ -1,9 +1,7 @@
 import { Badge, Notice, RiskBadge } from "@/components/ui";
-import { fmt1, fmtDate, fmtInt, fmtMoney, fmtPct, methodLabel } from "@/lib/format";
+import { fmt1, fmtDate, fmtInt, fmtMoney, fmtMoney2, fmtPct, methodLabel } from "@/lib/format";
 import type { Recommendation } from "@/lib/types";
 
-const money2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtMoney2 = (v: number) => money2.format(v);
 
 /** Read-only view of one inventory recommendation, including the assumptions behind it. */
 export function RecommendationPanel({ rec }: { rec: Recommendation }) {

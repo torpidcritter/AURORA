@@ -48,7 +48,7 @@ export default function SuppliersPage() {
         actions={
           <div className="flex items-center gap-3">
             <label className="sr-only" htmlFor="sq">Search suppliers</label>
-            <Input id="sq" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} className="w-44" />
+            <Input id="sq" type="search" data-shortcut-search placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} className="w-44" />
             <label className="flex items-center gap-2 text-xs text-muted">
               <input type="checkbox" checked={inactive} onChange={(e) => setInactive(e.target.checked)} />
               Show inactive

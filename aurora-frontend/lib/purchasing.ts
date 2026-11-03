@@ -1,6 +1,7 @@
 /** Pure helpers for purchase orders and forecast overrides. The API enforces every rule; these only give early,
  *  friendly feedback and decide which buttons to show. */
 
+import { fmt2 } from "@/lib/format";
 import type { FvaVerdict, OverrideKind, POLine, POStatus } from "@/lib/types";
 
 export const PO_STATUS_LABEL: Record<POStatus, string> = {
@@ -120,7 +121,7 @@ export function overrideErrors(f: OverrideForm): Partial<Record<keyof OverrideFo
 }
 
 export function describeOverride(kind: OverrideKind, value: number): string {
-  return kind === "set" ? `${value.toLocaleString()} units/day` : `forecast × ${value}`;
+  return kind === "set" ? `${fmt2(value)} units/day` : `forecast × ${value}`;
 }
 
 export const FVA_LABEL: Record<FvaVerdict, string> = {

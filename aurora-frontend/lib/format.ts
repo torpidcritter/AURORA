@@ -1,12 +1,50 @@
-const nf0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const nf1 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
-const nf2 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
-const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+import { DEFAULT_LOCALE, readLocale } from "@/lib/preferences";
 
-export const fmtInt = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "—" : nf0.format(v));
-export const fmt1 = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "—" : nf1.format(v));
-export const fmt2 = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "—" : nf2.format(v));
-export const fmtMoney = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "—" : money.format(v));
+// Numbers and dates follow the locale chosen on the account page (ADR-049). The server render and the first client
+// render both use the default, so hydration matches; the chosen locale applies from then on.
+let locale: string | null = null;
+const cache = new Map<string, Intl.NumberFormat>();
+let hydrated = false;
+
+/** Called once the app has mounted; formatting switches to the saved locale from the next render. */
+export function markHydrated(): void {
+  hydrated = true;
+}
+
+/** The locale used for formatting. Read from the browser once, after hydration. */
+export function formatLocale(): string {
+  if (locale) return locale;
+  if (typeof window === "undefined" || !hydrated) return DEFAULT_LOCALE;
+  locale = readLocale();
+  return locale;
+}
+
+/** For tests and the account page: format with this locale from now on. */
+export function setFormatLocale(l: string | null): void {
+  locale = l;
+}
+
+function nf(opts: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const loc = formatLocale();
+  const key = `${loc}|${JSON.stringify(opts)}`;
+  let f = cache.get(key);
+  if (!f) {
+    f = new Intl.NumberFormat(loc, opts);
+    cache.set(key, f);
+  }
+  return f;
+}
+
+const ok = (v: number | null | undefined): v is number => v != null && Number.isFinite(v);
+
+export const fmtInt = (v: number | null | undefined): string => (ok(v) ? nf({ maximumFractionDigits: 0 }).format(v) : "—");
+export const fmt1 = (v: number | null | undefined): string => (ok(v) ? nf({ maximumFractionDigits: 1 }).format(v) : "—");
+export const fmt2 = (v: number | null | undefined): string => (ok(v) ? nf({ maximumFractionDigits: 2 }).format(v) : "—");
+// Amounts are stored without a currency; USD is shown until organisations can set theirs (see docs/UX.md).
+export const fmtMoney = (v: number | null | undefined): string =>
+  ok(v) ? nf({ style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v) : "—";
+export const fmtMoney2 = (v: number | null | undefined): string =>
+  ok(v) ? nf({ style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : "—";
 export const fmtPct = (v: number | null | undefined, digits = 0): string =>
   v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
 export const fmtPctPoints = (v: number | null | undefined, digits = 1): string =>
@@ -15,17 +53,17 @@ export const fmtPctPoints = (v: number | null | undefined, digits = 1): string =
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = iso.length === 10 ? new Date(`${iso}T00:00:00Z`) : new Date(iso);
-  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString(formatLocale(), { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 export function fmtShortDate(iso: string): string {
   const d = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return d.toLocaleDateString(formatLocale(), { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
 export function fmtDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
+  return new Date(iso).toLocaleString(formatLocale(), {
     year: "numeric",
     month: "short",
     day: "numeric",

@@ -101,7 +101,7 @@ export default function ForecastsPage() {
             </thead>
             <tbody>
               {latest.data.items.map((r) => (
-                <tr key={r.product_id} className="hover:bg-white/5">
+                <tr key={r.product_id} className="hover:bg-hover">
                   <Td><Link className="font-medium text-primary hover:underline" href={`/products/${r.product_id}`}>{r.sku}</Link></Td>
                   <Td>{r.name}</Td>
                   <Td>{methodLabel(r.method)}</Td>

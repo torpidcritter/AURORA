@@ -331,7 +331,15 @@ test.describe.serial("Aurora end to end", () => {
     await ctx2.close();
 
     await page.reload();
-    await expect(page.getByRole("row").filter({ hasText: email })).toContainText("2FA on");
+    // Users are listed oldest first, so on a reused test database the new one can be on a later page.
+    const row = page.getByRole("row").filter({ hasText: email });
+    const next = page.getByRole("navigation", { name: "Pagination" }).getByRole("button", { name: "Next" });
+    await expect(page.getByRole("table", { name: "Users" })).toBeVisible();
+    while (!(await row.count()) && (await next.count()) && (await next.isEnabled())) {
+      await next.click();
+      await page.waitForLoadState("networkidle");
+    }
+    await expect(row).toContainText("2FA on");
   });
 
   test("assistant answers from real data (built-in mode without an API key)", async () => {
@@ -423,6 +431,35 @@ test.describe.serial("Aurora end to end", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Revoke key" }).click();
     await expect(row).toContainText("revoked");
     expect((await request.get(`${api}/products?limit=1`, { headers: auth })).status()).toBe(401);
+  });
+
+  test("theme, keyboard shortcuts and phone-width layout", async () => {
+    await page.goto("/dashboard");
+    await page.getByRole("button", { name: /Theme: Dark/ }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.reload();
+    // The boot script applies the saved theme before React loads.
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+
+    await page.locator("body").press("?");
+    await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("g");
+    await page.keyboard.press("s");
+    await expect(page).toHaveURL(/\/suppliers$/);
+    await page.keyboard.press("/");
+    await expect(page.locator("[data-shortcut-search]")).toBeFocused();
+
+    await page.setViewportSize({ width: 375, height: 800 });
+    for (const path of ["/suppliers", "/admin/users", "/upload", "/inventory"]) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow, `${path} scrolls sideways at 375px`).toBeLessThanOrEqual(0);
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.evaluate(() => localStorage.removeItem("aurora.theme"));
   });
 
   test("logout clears the session", async () => {

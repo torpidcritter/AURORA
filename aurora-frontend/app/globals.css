@@ -16,9 +16,74 @@
   --color-warn: #fbbf24;
   --color-bad: #fb7185;
   --color-ai: #a78bfa;
+  /* Row hover and other faint fills; text on accent-coloured buttons. */
+  --color-hover: rgba(255, 255, 255, 0.05);
+  --color-on-accent: #020617;
+  /* Chart series (also used as SVG strokes through var()). */
+  --color-chart-actual: #cbd5e1;
+  --color-chart-soft: #ddd6fe;
+  --color-chart-high: #fb923c;
   --shadow-glass: 0 0 0 1px rgba(56, 189, 248, 0.02), 0 16px 40px -20px rgba(56, 189, 248, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Light theme (ADR-049): chosen in the account menu, or "match system" with a light system setting. The same
+   tokens as the dark theme, so components need no theme-specific classes. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f5f7fb;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef2f7;
+  --color-line: rgba(15, 23, 42, 0.13);
+  --color-glass-line: rgba(15, 23, 42, 0.08);
+  --color-ink: #0f172a;
+  --color-muted: #475569;
+  /* At least 4.5:1 on white and on surface-2. */
+  --color-faint: #56657c;
+  --color-primary: #0369a1;
+  --color-ok: #047857;
+  --color-warn: #b45309;
+  --color-bad: #be123c;
+  --color-ai: #6d28d9;
+  --color-hover: rgba(15, 23, 42, 0.04);
+  --color-on-accent: #ffffff;
+  --color-chart-actual: #475569;
+  --color-chart-soft: #7c3aed;
+  --color-chart-high: #c2410c;
+  --shadow-glass: 0 0 0 1px rgba(15, 23, 42, 0.03), 0 12px 32px -20px rgba(15, 23, 42, 0.25);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.94);
+  --glass-bg-solid: #ffffff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    color-scheme: light;
+    --color-bg: #f5f7fb;
+    --color-surface: #ffffff;
+    --color-surface-2: #eef2f7;
+    --color-line: rgba(15, 23, 42, 0.13);
+    --color-glass-line: rgba(15, 23, 42, 0.08);
+    --color-ink: #0f172a;
+    --color-muted: #475569;
+    /* At least 4.5:1 on white and on surface-2. */
+    --color-faint: #56657c;
+    --color-primary: #0369a1;
+    --color-ok: #047857;
+    --color-warn: #b45309;
+    --color-bad: #be123c;
+    --color-ai: #6d28d9;
+    --color-hover: rgba(15, 23, 42, 0.04);
+    --color-on-accent: #ffffff;
+    --color-chart-actual: #475569;
+    --color-chart-soft: #7c3aed;
+    --color-chart-high: #c2410c;
+    --shadow-glass: 0 0 0 1px rgba(15, 23, 42, 0.03), 0 12px 32px -20px rgba(15, 23, 42, 0.25);
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-strong: rgba(255, 255, 255, 0.94);
+    --glass-bg-solid: #ffffff;
+  }
 }
 
 :root {
@@ -75,8 +140,8 @@ body {
 }
 
 body {
-  background-image: radial-gradient(1200px 600px at 10% -10%, rgba(56, 189, 248, 0.06), transparent 60%),
-    radial-gradient(900px 500px at 110% 10%, rgba(167, 139, 250, 0.05), transparent 60%);
+  background-image: radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--color-ai) 5%, transparent), transparent 60%);
   background-attachment: fixed;
   min-height: 100vh;
 }
@@ -94,5 +159,13 @@ body {
   * {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* Grid items default to min-width: auto, so a wide table inside one (in its own scroll box) would stretch the whole
+   column and make the page scroll sideways on a phone. Layered so a min-w-* utility on an item still wins. */
+@layer base {
+  .grid > * {
+    min-width: 0;
   }
 }

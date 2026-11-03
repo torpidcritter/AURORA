@@ -34,19 +34,25 @@ import type { AdjustedPoint, ForecastPoint, HistoryPoint, Recommendation } from 
  * every multi-series chart has a legend, labelled tooltips and a data-table view.
  */
 export const ROLE = {
-  actual: "#cbd5e1",
-  forecast: "#38bdf8",
-  ai: "#a78bfa",
-  aiSoft: "#ddd6fe",
+  actual: "var(--color-chart-actual)",
+  forecast: "var(--color-primary)",
+  ai: "var(--color-ai)",
+  aiSoft: "var(--color-chart-soft)",
 } as const;
-export const STATUS = { critical: "#fb7185", high: "#fb923c", medium: "#fbbf24", low: "#34d399", unknown: "#94a3b8" };
+export const STATUS = {
+  critical: "var(--color-bad)",
+  high: "var(--color-chart-high)",
+  medium: "var(--color-warn)",
+  low: "var(--color-ok)",
+  unknown: "var(--color-muted)",
+};
 /** Marker shape per risk level, so the scatter does not depend on hue. */
 export const STATUS_SHAPE = { critical: "triangle", high: "diamond", medium: "square", low: "circle" } as const;
 export const DASH = { forecast: "6 4", scenario: "6 4", validation: "3 3" } as const;
-// Tick labels use the faint text token (#7c8aa1), which keeps 11px labels above 4.5:1 on the chart surfaces.
-const AXIS = { stroke: "#7c8aa1", fontSize: 11, tickLine: false } as const;
-const GRID = { stroke: "rgba(148,163,184,0.10)", vertical: false } as const;
-const LEGEND_STYLE = { fontSize: 12, color: "#94a3b8" } as const;
+// Tick labels use the faint text token (--color-faint), which keeps 11px labels above 4.5:1 on the chart surfaces.
+const AXIS = { stroke: "var(--color-faint)", fontSize: 11, tickLine: false } as const;
+const GRID = { stroke: "var(--color-line)", vertical: false } as const;
+const LEGEND_STYLE = { fontSize: 12, color: "var(--color-muted)" } as const;
 
 function TooltipBox({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
   return (
@@ -186,7 +192,7 @@ export function DemandForecastChart({
             }}
           />
           <Legend wrapperStyle={LEGEND_STYLE} />
-          {splitDate && <ReferenceLine x={splitDate} stroke="#7c8aa1" strokeDasharray="3 3" label={{ value: "Forecast starts", position: "insideTopLeft", fill: "#94a3b8", fontSize: 11 }} />}
+          {splitDate && <ReferenceLine x={splitDate} stroke="var(--color-faint)" strokeDasharray="3 3" label={{ value: "Forecast starts", position: "insideTopLeft", fill: "#94a3b8", fontSize: 11 }} />}
           <Area dataKey="band" name={covLabel} stroke="none" fill={ROLE.forecast} fillOpacity={0.16} isAnimationActive={false} legendType="square" />
           <Line legendType="plainline" dataKey="actual" name="Actual" stroke={ROLE.actual} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
           <Line legendType="plainline" dataKey="forecast" name="Forecast" stroke={ROLE.forecast} strokeWidth={2} strokeDasharray={DASH.forecast} dot={false} isAnimationActive={false} connectNulls />
@@ -267,7 +273,7 @@ export function RiskScatter({ rows, onSelect }: { rows: Recommendation[]; onSele
     >
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 8, right: 16, bottom: 16, left: -4 }}>
-          <CartesianGrid stroke="rgba(148,163,184,0.10)" />
+          <CartesianGrid stroke="var(--color-line)" />
           <XAxis type="number" dataKey="x" name="Days of stock" domain={[0, CAP]} {...AXIS} label={{ value: `Days until stockout (capped at ${CAP})`, position: "insideBottom", offset: -8, fill: "#94a3b8", fontSize: 11 }} />
           <YAxis type="number" dataKey="y" name="P(stockout)" domain={[0, 100]} unit="%" {...AXIS} width={48} />
           <ZAxis range={[70, 70]} />
@@ -298,7 +304,7 @@ export function RiskScatter({ rows, onSelect }: { rows: Recommendation[]; onSele
               fill={STATUS[lvl]}
               shape={STATUS_SHAPE[lvl]}
               legendType={STATUS_SHAPE[lvl]}
-              stroke="#0c111c"
+              stroke="var(--color-surface)"
               strokeWidth={2}
               isAnimationActive={false}
               onClick={(p: { id?: string }) => p?.id && onSelect?.(p.id)}
@@ -317,7 +323,7 @@ export function ImportanceChart({ features }: { features: { feature: string; del
     <ChartFrame label="Permutation importance (increase in MAE when shuffled)" height={Math.max(160, features.length * 40)} table={<SimpleTable cols={["Feature", "ΔMAE", "± sd"]} rows={features.map((f) => [label(f.feature), fmt1(f.delta_mae_mean), fmt1(f.delta_mae_std)])} />}>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={features.map((f) => ({ ...f, name: label(f.feature) }))} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 24 }}>
-          <CartesianGrid stroke="rgba(148,163,184,0.10)" horizontal={false} />
+          <CartesianGrid stroke="var(--color-line)" horizontal={false} />
           <XAxis type="number" {...AXIS} />
           <YAxis type="category" dataKey="name" width={110} {...AXIS} />
           <Tooltip content={({ active, payload }) => (active && payload?.length ? <TooltipBox title={String((payload[0]!.payload as { name: string }).name)} rows={[{ label: "ΔMAE (units/day)", value: fmt1(payload[0]!.value as number) }]} /> : null)} />

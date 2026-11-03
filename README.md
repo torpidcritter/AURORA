@@ -15,6 +15,8 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Operations:** health checks, Prometheus metrics, alert rules and a Grafana dashboard (`deploy/monitoring/`,
   `docs/OBSERVABILITY.md`), JSON logs with request ids, optional Sentry error reporting with personal data stripped.
 - **Reports:** purchase orders and an inventory report as PDF; saved, shareable filter views on the main lists.
+- **Display:** dark or light theme, keyboard shortcuts (`?`), low-stock browser notifications while Aurora is open,
+  and local number and date formats (`docs/UX.md`; the interface text is English only).
 - **Inventory:** safety stock, reorder point and quantity (pack size, MOQ), days until stock-out, stock-out
   probability, urgency, a risk matrix and what-if scenarios; an overstock and dead-stock report.
 - **Purchasing:** suppliers, purchase orders from draft to received (with approval, partial receipts and CSV export),

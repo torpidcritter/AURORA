@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
+import { THEME_BOOT_SCRIPT } from "@/lib/preferences";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +14,11 @@ export const viewport: Viewport = { themeColor: "#070a12", width: "device-width"
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    // The boot script sets data-theme before React hydrates, so the attribute differs from the server render.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body className="antialiased">{children}</body>
     </html>
   );
