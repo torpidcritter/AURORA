@@ -7,9 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# libgomp1: OpenMP runtime used by PyTorch CPU kernels.
+# libgomp1: OpenMP runtime used by PyTorch CPU kernels. fonts-dejavu-core: a Unicode font for PDF reports.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgomp1 \
+ && apt-get install -y --no-install-recommends libgomp1 fonts-dejavu-core \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

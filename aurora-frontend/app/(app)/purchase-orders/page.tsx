@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import useSWR from "swr";
 
+import { SavedViews } from "@/components/SavedViews";
 import { Badge, Button, Card, EmptyState, ErrorState, LoadingBlock, Notice, PageHeader, Pagination, Select, Table, Td, Th } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmtDate, fmtInt, fmtMoney } from "@/lib/format";
@@ -76,6 +77,14 @@ export default function PurchaseOrdersPage() {
             </>
           )
         }
+      />
+      <SavedViews
+        page="purchase_orders"
+        current={{ status }}
+        onApply={(v) => {
+          setStatus(typeof v.status === "string" ? v.status : "");
+          setOffset(0);
+        }}
       />
       {err != null && <div className="mb-4"><ErrorState error={err} /></div>}
       {result && (

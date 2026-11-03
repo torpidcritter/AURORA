@@ -587,3 +587,23 @@ The spec names files that do not exist here; the responsibilities live in these 
   deleted by the nightly purge after 30 days. API keys cannot reach `/assistant/` at all.
 - The deterministic fallback (no API key, or Claude unavailable) also proposes for plain requests: "acknowledge
   ... alerts" proposes the open alerts, "draft orders" proposes the most urgent products that need reordering.
+
+## ADR-047 PDF documents and saved views
+- Two PDFs, rendered server-side with fpdf2 (pure Python, LGPL-3.0, used unmodified as a library; pulls in Pillow and
+  fontTools):
+  a purchase order to send to a supplier (`GET /purchase-orders/{id}/export.pdf`) and an inventory report with the
+  risk summary, the products to reorder (most urgent 200) and how the numbers are made (`GET /reports/inventory.pdf`).
+  Both use the same service output as the screens (`order_out`, `risk_matrix`), so a PDF never shows a number the
+  app does not. Any signed-in role can download them, as with the CSV export; they are `Cache-Control: no-store`
+  and rate limited (30 and 5 a minute per user; the inventory report scores every product).
+- A draft or approved order is printed with "has not been sent to the supplier" and a cancelled one with "do not
+  fulfil", so a printout cannot pass for a sent order.
+- Product and supplier names may use any script. The image installs `fonts-dejavu-core` and the PDFs embed DejaVu
+  Sans; where it is missing (`PDF_FONT_DIR` can point elsewhere) Helvetica is used, characters outside Latin-1 become
+  "?" and the document says so.
+- Saved views store named filter sets for the products, recommendations, purchase order and alert lists. Only the
+  known filter keys of that page are accepted, with text values of at most 200 characters or true/false, so a view
+  cannot carry anything else. Views are private unless shared with the organisation; only the owner or an admin can
+  delete a shared one. At most 30 per user per page. Sharing and deleting shared views are audited; private views
+  are personal preferences and are not. Views are in the organisation export and go with the user's account.
+- Not done: scheduled PDF delivery (digests still send text), and views do not yet put filters in the page address.

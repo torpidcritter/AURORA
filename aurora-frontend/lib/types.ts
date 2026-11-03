@@ -962,3 +962,16 @@ export interface PromotionDetail extends Promotion {
   measurement: PromotionMeasurement | null;
   estimate: PromotionEstimate | null;
 }
+
+export type SavedViewPage = "products" | "inventory" | "purchase_orders" | "alerts";
+export type ViewParams = Record<string, string | boolean>;
+
+export interface SavedView {
+  id: string;
+  page: SavedViewPage;
+  name: string;
+  params: ViewParams;
+  shared: boolean;
+  mine: boolean;
+  created_at: string;
+}

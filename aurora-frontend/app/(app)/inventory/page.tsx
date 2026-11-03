@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 
+import { SavedViews } from "@/components/SavedViews";
 import { Badge, Card, EmptyState, ErrorState, LoadingBlock, Notice, PageHeader, RiskBadge, Select, Table, Td, Th } from "@/components/ui";
 import { fmt1, fmtInt, fmtMoney, fmtPct } from "@/lib/format";
 import { RISK_ORDER, useRiskMatrix } from "@/lib/hooks";
@@ -26,7 +27,19 @@ export default function InventoryPage() {
 
   return (
     <>
-      <PageHeader title="Recommendations" description="Reorder quantities and stock positions for every product, most urgent first." />
+      <PageHeader
+        title="Recommendations"
+        description="Reorder quantities and stock positions for every product, most urgent first."
+        actions={<a className="text-sm text-primary hover:underline" href="/api/proxy/reports/inventory.pdf" download>Download PDF report</a>}
+      />
+      <SavedViews
+        page="inventory"
+        current={{ level, only_reorder: onlyReorder }}
+        onApply={(v) => {
+          setLevel(typeof v.level === "string" ? v.level : "all");
+          setOnlyReorder(v.only_reorder === true);
+        }}
+      />
       <Card title="Action list" subtitle="Highest-priority actions across reorders, overstock and data gaps" className="mb-6">
         {actions.error ? (
           <ErrorState error={actions.error} onRetry={() => actions.mutate()} />

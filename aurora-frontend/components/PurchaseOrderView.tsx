@@ -60,6 +60,9 @@ export function PurchaseOrderView({ id }: { id: string }) {
             <a className="text-sm text-primary hover:underline" href={`/api/proxy/purchase-orders/${po.id}/export.csv`} download>
               Download CSV
             </a>
+            <a className="text-sm text-primary hover:underline" href={`/api/proxy/purchase-orders/${po.id}/export.pdf`} download>
+              Download PDF
+            </a>
             {actions.includes("edit") && !editing && <Button onClick={() => setEditing(true)}>Edit</Button>}
             {actions.includes("approve") && (
               <Button variant="primary" loading={busy === "approve"} disabled={editing || busy != null} onClick={() => void act("approve")}>Approve</Button>

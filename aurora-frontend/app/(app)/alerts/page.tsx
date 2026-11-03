@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import useSWR from "swr";
 
+import { SavedViews } from "@/components/SavedViews";
 import { Badge, Button, Card, ConfirmButton, EmptyState, ErrorState, LoadingBlock, PageHeader, Pagination, RiskBadge, Select } from "@/components/ui";
 import { api } from "@/lib/api";
 import { fmtDateTime } from "@/lib/format";
@@ -36,6 +37,15 @@ export default function AlertsPage() {
   return (
     <>
       <PageHeader title="Alerts" description="Stockout risk, drift, stale data and model accuracy alerts. Alerts resolve automatically when their condition clears." />
+      <SavedViews
+        page="alerts"
+        current={{ status, severity }}
+        onApply={(v) => {
+          setStatus(typeof v.status === "string" ? v.status : "");
+          setSeverity(typeof v.severity === "string" ? v.severity : "");
+          setOffset(0);
+        }}
+      />
       <Card
         actions={
           <div className="flex gap-2">

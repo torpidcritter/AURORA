@@ -5,6 +5,7 @@ import { useState } from "react";
 import useSWR from "swr";
 
 import { HealthBadge, useProductHealth } from "@/components/HealthBadge";
+import { SavedViews } from "@/components/SavedViews";
 import { Badge, Button, Card, EmptyState, ErrorState, Input, LoadingBlock, Notice, PageHeader, Pagination, Select, Skeleton, Table, Td, Th } from "@/components/ui";
 import { fmt1, fmtDate, fmtInt } from "@/lib/format";
 import { matchesHealthFilter, type HealthFilter } from "@/lib/health";
@@ -123,6 +124,20 @@ export default function ProductsPage() {
   return (
     <>
       <PageHeader title="Products" description="Every SKU found in your uploads, with recent demand, stock settings and how well its forecasts are holding up." />
+      <SavedViews
+        page="products"
+        current={{ q: q.trim(), category, health: healthFilter, sort, order }}
+        onApply={(v) => {
+          const str = (k: string, d: string) => (typeof v[k] === "string" ? (v[k] as string) : d);
+          setQ(str("q", ""));
+          setCategory(str("category", ""));
+          const h = str("health", "");
+          setHealthFilter((["attention", "healthy", "insufficient"].includes(h) ? h : "") as HealthFilter);
+          setSort(str("sort", "sku"));
+          setOrder(str("order", "asc") === "desc" ? "desc" : "asc");
+          setOffset(0);
+        }}
+      />
       <Card>
         <div className="mb-4 flex flex-wrap gap-3">
           <label className="sr-only" htmlFor="pq">Search products</label>

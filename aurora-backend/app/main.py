@@ -30,6 +30,7 @@ ROUTERS = [
     ("app.api.routes.developers", "router"),
     ("app.api.routes.launches", "router"),
     ("app.api.routes.promotions", "router"),
+    ("app.api.routes.reports", "router"),
 ]
 
 

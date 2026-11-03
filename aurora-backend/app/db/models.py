@@ -808,3 +808,19 @@ class AssistantProposal(TimestampMixin, Base):
     result: Mapped[dict | None] = mapped_column(JSONB)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SavedView(TimestampMixin, Base):
+    """A named set of filters for a list page (ADR-047). Private to its owner unless shared with the organisation."""
+
+    __tablename__ = "saved_views"
+    __table_args__ = (UniqueConstraint("user_id", "page", "name", name="uq_saved_views_user_page_name"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    page: Mapped[str] = mapped_column(String(40), nullable=False)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

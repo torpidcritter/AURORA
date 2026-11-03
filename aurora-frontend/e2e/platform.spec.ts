@@ -351,6 +351,26 @@ test.describe.serial("Aurora end to end", () => {
     await expect(card.getByRole("status")).toHaveText("Dismissed. Nothing was changed.");
   });
 
+  test("a saved view is stored and reapplied; the inventory report downloads as PDF", async () => {
+    const name = `E2E view ${Date.now()}`;
+    await page.goto("/alerts");
+    await page.getByLabel("Severity").selectOption("critical");
+    await page.getByRole("button", { name: "Save these filters" }).click();
+    await page.getByLabel("View name").fill(name);
+    await page.getByRole("button", { name: "Save view" }).click();
+    await expect(page.getByLabel("Saved views")).toHaveValue(/.+/);
+    await page.getByLabel("Severity").selectOption("");
+    await page.getByLabel("Saved views").selectOption({ label: name });
+    await expect(page.getByLabel("Severity")).toHaveValue("critical");
+    await page.getByRole("button", { name: "Delete view" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete view" }).click();
+    await expect(page.getByRole("option", { name })).toHaveCount(0);
+
+    await page.goto("/inventory");
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download PDF report" }).click()]);
+    expect(download.suggestedFilename()).toBe("aurora-inventory-report.pdf");
+  });
+
   test("the audit log exports as CSV and records the export", async () => {
     await page.goto("/admin/audit");
     await expect(page.getByRole("table", { name: "Audit events" })).toBeVisible();
