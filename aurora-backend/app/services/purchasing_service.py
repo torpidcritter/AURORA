@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.db.models import Location, Organization, Product, PurchaseOrder, PurchaseOrderLine, Supplier
 from app.domain import pricing
-from app.services import inventory_service, settings_service, stock_service
+from app.services import inventory_service, settings_service, stock_service, webhooks
 
 OPEN_UNSENT = ("draft", "approved")
 OPEN = ("draft", "approved", "sent", "partially_received")
@@ -452,6 +452,23 @@ def _lock_products(db: Session, org_id: uuid.UUID, ids: list[uuid.UUID]) -> dict
     }
 
 
+def _emit_status(db: Session, po: PurchaseOrder, previous: str) -> None:
+    webhooks.emit(
+        db,
+        po.org_id,
+        "purchase_order.status_changed",
+        {
+            "id": str(po.id),
+            "number": order_number(po.number),
+            "status": po.status,
+            "previous_status": previous,
+            "supplier_id": str(po.supplier_id) if po.supplier_id else None,
+            "supplier_name": po.supplier_name,
+            "expected_date": po.expected_date.isoformat() if po.expected_date else None,
+        },
+    )
+
+
 def approve(
     db: Session, org_id: uuid.UUID, po_id: uuid.UUID, user_id: uuid.UUID, *, expected_version: int | None = None
 ) -> PurchaseOrder:
@@ -463,6 +480,7 @@ def approve(
     if not _lines(db, po.id):
         raise ValidationFailed("An order needs at least one line")
     po.status, po.approved_by, po.approved_at = "approved", user_id, _now()
+    _emit_status(db, po, "draft")
     po.version += 1
     db.flush()
     return po
@@ -482,6 +500,7 @@ def send(db: Session, org_id: uuid.UUID, po_id: uuid.UUID, *, expected_version: 
         stock_service.adjust(db, p, loc_id, on_order=ln.quantity)
         p.version += 1
     po.status, po.sent_at = "sent", _now()
+    _emit_status(db, po, "approved")
     po.supplier_name = supplier.name if supplier else po.supplier_name
     if po.expected_date is None and supplier is not None and supplier.lead_time_days:
         po.expected_date = (po.sent_at + timedelta(days=supplier.lead_time_days)).date()
@@ -529,7 +548,9 @@ def receive(
         p.inventory_known = True
         p.version += 1
     complete = all(ln.received_qty == ln.quantity for ln in lines.values())
+    previous = po.status
     po.status = "received" if complete else "partially_received"
+    _emit_status(db, po, previous)
     if complete:
         po.received_at = _now()
     po.version += 1
@@ -551,7 +572,9 @@ def cancel(db: Session, org_id: uuid.UUID, po_id: uuid.UUID, *, expected_version
                 p = products[ln.product_id]
                 stock_service.adjust(db, p, loc_id, on_order=-outstanding)
                 p.version += 1
+    previous = po.status
     po.status, po.cancelled_at = "cancelled", _now()
+    _emit_status(db, po, previous)
     po.version += 1
     db.flush()
     return po

@@ -82,6 +82,7 @@ def test_purge_expired_removes_only_dead_rows(client, org, db):
         "password_reset_tokens": 2,
         "webhook_events": 1,
         "invitations": 0,
+        "webhook_deliveries": 0,
     }
     assert db.scalar(select(func.count()).select_from(RefreshToken)) == live_before + 2
     assert set(db.scalars(select(OAuthState.state))) == {"new"}

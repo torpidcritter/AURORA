@@ -9,17 +9,21 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
+from app.core import crypto
 from app.core.config import get_settings
 from app.db.models import (
     AuditEvent,
+    DigestSchedule,
     Invitation,
     OAuthState,
     Organization,
     PasswordResetToken,
     RefreshToken,
+    User,
+    WebhookEndpoint,
     WebhookEvent,
 )
-from app.services import audit, settings_service
+from app.services import audit, settings_service, webhooks
 
 # Revoked or rotated refresh tokens are kept until they expire: reuse detection needs them. After expiry a reused
 # token is rejected anyway, so one extra day of grace is plenty.
@@ -56,6 +60,8 @@ def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
     # Invitations: the audit log keeps who invited whom; the rows themselves go 90 days after they stopped working.
     res = db.execute(delete(Invitation).where(Invitation.expires_at < now - INVITATION_GRACE))
     counts["invitations"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
+    # Outgoing webhook deliveries that finished more than 30 days ago (ADR-043).
+    counts["webhook_deliveries"] = webhooks.purge_old(db, now)
     db.commit()
     return counts
 
@@ -99,3 +105,29 @@ def purge_audit(db: Session, now: datetime | None = None) -> dict[str, int]:
     counts["no_organisation"] = int(res.rowcount or 0)  # type: ignore[attr-defined]
     db.commit()
     return counts
+
+
+# Encrypted columns other than Shopify tokens (those are handled by shopify_service.reencrypt_tokens).
+ENCRYPTED_COLUMNS = (
+    (DigestSchedule, "target_encrypted"),
+    (WebhookEndpoint, "url_encrypted"),
+    (WebhookEndpoint, "secret_encrypted"),
+    (User, "totp_secret"),
+    (User, "totp_pending"),
+)
+
+
+def reencrypt_secrets(db: Session) -> dict[str, int]:
+    """Re-encrypt digest targets, webhook URLs and secrets and two-factor secrets with the newest
+    TOKEN_ENCRYPTION_KEYS key, so older keys can be removed. Values no key can decrypt are counted, not changed."""
+    rotated = failed = 0
+    for model, column in ENCRYPTED_COLUMNS:
+        col = getattr(model, column)
+        for row in db.scalars(select(model).where(col.is_not(None))).all():
+            try:
+                setattr(row, column, crypto.rotate(getattr(row, column)))
+                rotated += 1
+            except ValueError:
+                failed += 1
+    db.commit()
+    return {"rotated": rotated, "failed": failed}

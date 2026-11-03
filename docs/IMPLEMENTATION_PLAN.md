@@ -86,8 +86,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Two-factor login with an authenticator app, recovery codes and an organisation requirement (ADR-040)
 - [x] Team invitations by one-time link (e-mailed when SMTP is set) and a getting-started checklist (ADR-041)
 - [x] Organisation data export, personal data download, account deletion and scheduled organisation deletion (ADR-042)
-- [ ] Next roadmap items: API keys
-  and webhooks, launches, promotions, assistant actions, PDF reports, observability, UX polish, connectors;
+- [x] API keys for other systems and signed outgoing webhooks with retries (ADR-043, docs/WEBHOOKS.md)
+- [ ] Next roadmap items: launches, promotions, assistant actions, PDF reports, observability, UX polish, connectors;
   per-location demand needs sales by location
 
 ## Follow-ups

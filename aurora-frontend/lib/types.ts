@@ -808,3 +808,49 @@ export interface DeletionSchedule {
   due_at: string;
   requested_by: string;
 }
+
+export type ApiKeyRole = "viewer" | "operator" | "analyst";
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  role: ApiKeyRole;
+  created_at: string;
+  created_by_email: string | null;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+  active: boolean;
+}
+
+export interface WebhookEvent {
+  key: string;
+  description: string;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  url_hint: string;
+  description: string;
+  events: string[];
+  active: boolean;
+  disabled_reason: string | null;
+  consecutive_failures: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  created_at: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  endpoint_id: string;
+  event: string;
+  status: "pending" | "succeeded" | "failed";
+  attempts: number;
+  last_status_code: number | null;
+  last_error: string | null;
+  next_attempt_at: string | null;
+  created_at: string;
+  delivered_at: string | null;
+}

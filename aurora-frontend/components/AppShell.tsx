@@ -28,6 +28,7 @@ import {
   Upload,
   Users,
   Warehouse,
+  Webhook,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -99,6 +100,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/admin/users", label: "Users", icon: Users, perm: "manage_users" },
       { href: "/admin/audit", label: "Audit log", icon: ScrollText, perm: "view_audit" },
       { href: "/admin/ops", label: "System & integrations", icon: Activity, perm: "view_ops" },
+      { href: "/admin/developers", label: "API and webhooks", icon: Webhook, perm: "manage_integrations" },
       { href: "/admin/settings", label: "Settings", icon: SlidersHorizontal, perm: "manage_settings" },
     ],
   },

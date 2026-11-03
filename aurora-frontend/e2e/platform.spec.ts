@@ -326,6 +326,27 @@ test.describe.serial("Aurora end to end", () => {
     expect(mine.suggestedFilename()).toBe("aurora-my-data.json");
   });
 
+  test("an API key works against the API until it is revoked", async ({ request }) => {
+    const api = process.env.API_URL ?? "http://127.0.0.1:8100";
+    await page.goto("/admin/developers");
+    await expect(page.getByText("alert.opened")).toBeVisible();
+    await page.getByLabel("Key name", { exact: true }).fill("E2E key");
+    await page.getByLabel("Key role", { exact: true }).selectOption("viewer");
+    await page.getByRole("button", { name: "Create key" }).click();
+    const secret = await page.getByLabel("New API key “E2E key” value").inputValue();
+    expect(secret).toMatch(/^aur_[0-9a-f]{8}_/);
+    const auth = { Authorization: `Bearer ${secret}` };
+    expect((await request.get(`${api}/products?limit=1`, { headers: auth })).status()).toBe(200);
+    expect((await request.get(`${api}/auth/me`, { headers: auth })).status()).toBe(403);
+    await page.getByRole("button", { name: "Done" }).click();
+
+    const row = page.getByRole("table", { name: "API keys" }).getByRole("row", { name: /E2E key/ });
+    await row.getByRole("button", { name: "Revoke" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Revoke key" }).click();
+    await expect(row).toContainText("revoked");
+    expect((await request.get(`${api}/products?limit=1`, { headers: auth })).status()).toBe(401);
+  });
+
   test("logout clears the session", async () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: /sign out|log out/i }).click();

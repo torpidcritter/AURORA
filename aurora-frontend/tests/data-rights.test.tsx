@@ -19,7 +19,7 @@ const job = (over: Partial<Job>): Job => ({
   status: "succeeded",
   progress: 1,
   params: {},
-  result: { bytes: 2048, rows: { products: 3, sales_records: 60 }, expires_at: "2026-11-01T00:00:00Z" },
+  result: { bytes: 2048, rows: { products: 3, sales_records: 60 }, expires_at: "2099-01-01T00:00:00Z" },
   error: null,
   attempts: 1,
   cancel_requested: false,

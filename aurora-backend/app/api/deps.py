@@ -34,6 +34,7 @@ class Principal:
     role: str
     email: str
     ip: str | None
+    api_key: str | None = None  # the key's prefix when the request used an API key (ADR-043)
 
     def can(self, perm: Perm) -> bool:
         return has_perm(self.role, perm)
@@ -66,6 +67,10 @@ def get_principal(
 ) -> Principal:
     if creds is None or creds.scheme.lower() != "bearer":
         raise Unauthorized("Missing bearer token")
+    from app.services import api_keys  # local import: services import this module's types
+
+    if api_keys.looks_like_key(creds.credentials):
+        return _key_principal(request, creds.credentials, db)
     try:
         claims = decode_access_token(creds.credentials)
         user_id = uuid.UUID(claims["sub"])
@@ -87,6 +92,23 @@ def get_principal(
                 code="two_factor_required",
             )
     return Principal(user_id=user.id, org_id=user.org_id, role=user.role, email=user.email, ip=client_ip(request))
+
+
+# API keys are for data, not for managing people, keys or the organisation itself (ADR-043).
+KEY_BLOCKED_PREFIXES = ("/auth/", "/users", "/api-keys", "/organisation/", "/data/")
+
+
+def _key_principal(request: Request, token: str, db: Session) -> Principal:
+    from app.services import api_keys
+
+    path = request.url.path
+    if path.startswith(KEY_BLOCKED_PREFIXES):
+        raise Forbidden("API keys cannot be used for this endpoint; sign in instead", code="api_key_not_allowed")
+    key, user, role = api_keys.authenticate(db, token)
+    rate_limit.hit(f"api-key:{key.id}", get_settings().api_rate_limit_per_minute, 60)
+    return Principal(
+        user_id=user.id, org_id=user.org_id, role=role, email=user.email, ip=client_ip(request), api_key=key.prefix
+    )
 
 
 def require(perm: Perm) -> Callable[[Principal], Principal]:

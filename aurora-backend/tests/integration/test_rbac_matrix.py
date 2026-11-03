@@ -103,6 +103,18 @@ MATRIX = [
     ("GET", "/organisation/deletion", None, "viewer"),
     ("POST", "/organisation/deletion", {"confirm_name": "nope", "current_password": "x"}, "admin"),
     ("DELETE", "/organisation/deletion", None, "admin"),
+    ("GET", "/api-keys", None, "admin"),
+    ("POST", "/api-keys", {"name": "k"}, "admin"),
+    ("DELETE", f"/api-keys/{X}", None, "admin"),
+    ("GET", "/integrations/webhooks/events", None, "admin"),
+    ("GET", "/integrations/webhooks", None, "admin"),
+    ("POST", "/integrations/webhooks", {"url": "https://a.example.com/h", "events": ["alert.opened"]}, "admin"),
+    ("GET", "/integrations/webhooks/deliveries", None, "admin"),
+    ("POST", f"/integrations/webhooks/deliveries/{X}/retry", None, "admin"),
+    ("PATCH", f"/integrations/webhooks/{X}", {"active": False}, "admin"),
+    ("DELETE", f"/integrations/webhooks/{X}", None, "admin"),
+    ("POST", f"/integrations/webhooks/{X}/rotate-secret", None, "admin"),
+    ("POST", f"/integrations/webhooks/{X}/test", None, "admin"),
     ("GET", "/ops/status", None, "analyst"),
     ("GET", "/settings/org", None, "viewer"),
     ("PATCH", "/settings/org", {"default_lead_time_days": 10}, "admin"),
@@ -210,6 +222,9 @@ def test_every_route_is_in_the_matrix(app):
             "{schedule_id}",
             "{digest_id}",
             "{invite_id}",
+            "{key_id}",
+            "{endpoint_id}",
+            "{delivery_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

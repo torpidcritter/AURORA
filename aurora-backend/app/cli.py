@@ -4,7 +4,7 @@ python -m app.cli bootstrap            # create the first organisation + admin (
 python -m app.cli seed-demo            # DEMO ONLY: load synthetic sales + inventory into the admin's org
 python -m app.cli create-user EMAIL ROLE
 python -m app.cli purge-expired          # delete expired refresh tokens, OAuth states, old webhook ids
-python -m app.cli reencrypt-tokens       # re-encrypt Shopify tokens with the newest TOKEN_ENCRYPTION_KEYS key
+python -m app.cli reencrypt-tokens       # re-encrypt stored secrets with the newest TOKEN_ENCRYPTION_KEYS key
 python -m app.cli grant-app-role         # as the schema owner, after migrations: create/refresh the runtime DB role
 python -m app.cli predeploy              # platform release hook: migrate + grant using MIGRATION_DATABASE_URL
 """
@@ -147,8 +147,15 @@ def main() -> None:
         with session_scope() as db:
             res = shopify_service.reencrypt_tokens(db)
         print(f"Re-encrypted {res['rotated']} token(s).")
+        with session_scope() as db:
+            other = maintenance.reencrypt_secrets(db)
+        print(f"Re-encrypted {other['rotated']} other secret(s) (digest targets, webhooks, two-factor).")
+        if other["failed"]:
+            print(f"{other['failed']} other secret(s) could not be decrypted with any configured key", file=sys.stderr)
         if res["failed"]:
             print("Could not decrypt (reconnect these shops): " + ", ".join(res["failed"]), file=sys.stderr)
+            sys.exit(1)
+        if other["failed"]:
             sys.exit(1)
     elif a.cmd == "grant-app-role":
         grant_app_role()

@@ -497,3 +497,27 @@ The spec names files that do not exist here; the responsibilities live in these 
   UTC) then deletes stored files, the organisation's audit events and the organisation row (all tenant tables
   cascade), and writes one `organisation.deleted` event with no organisation id, so the deletion itself stays on
   record. Backups are not touched; they age out under the backup retention (RUNBOOK).
+
+## ADR-043 API keys and outgoing webhooks
+- API keys (`aur_<8 hex>_<256-bit random>`) let other systems call the API. Only the SHA-256 is stored; the unique
+  prefix finds the row and the hash is compared in constant time. A key has its own role (viewer, operator or
+  analyst, never admin), is capped at its creator's current role, and stops working when the creator is deactivated
+  or deleted, when it expires (optional, up to 2 years) or when it is revoked. Keys are checked in the same
+  dependency as session tokens, so every existing permission check and tenant filter applies unchanged.
+- Keys are refused (403 `api_key_not_allowed`) on `/auth/*`, `/users*`, `/api-keys*`, `/organisation/*` and
+  `/data/*`: a leaked key must not be able to create accounts, mint keys, export everything or delete the
+  organisation. The two-factor requirement does not apply to keys; it protects interactive sign-in. Audit events
+  written with a key carry the creator as actor and the key prefix in the details. `last_used_at` is written at most
+  once a minute per key. Rate limits are per key.
+- Outgoing webhooks use an outbox: `webhooks.emit` adds one delivery row per subscribed endpoint inside the
+  transaction that makes the change, so an event exists exactly when the change commits and nothing is lost if the
+  worker is down. Beat runs `aurora.deliver_webhooks` every minute; rows are claimed with `FOR UPDATE SKIP LOCKED`.
+  Events: `alert.opened` (new alerts only, detected with `xmax = 0` on the upsert), `purchase_order.status_changed`,
+  `job.finished`, `model.promoted`.
+- Each request is signed like Stripe's scheme: `Aurora-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "t." + body>`
+  with a per-endpoint `whsec_` secret, encrypted at rest with `TOKEN_ENCRYPTION_KEYS` (ADR-016) along with the URL. Only the
+  host is ever shown. Addresses go through the same SSRF check as digest webhooks (ADR-036) when saved and before
+  every request; redirects are not followed.
+- Retries back off 1 m, 5 m, 30 m, 2 h, 12 h (6 attempts). Delivery is at least once and unordered; receivers
+  de-duplicate on the delivery id. After 30 consecutive failed attempts an endpoint is switched off with a reason.
+  Finished deliveries are deleted after 30 days by the nightly purge. Receiver guide: `docs/WEBHOOKS.md`.

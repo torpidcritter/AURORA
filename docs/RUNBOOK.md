@@ -104,7 +104,7 @@ CI checks that the models and migrations agree (`alembic check`).
   tables and a nullable `products.supplier_id`, so code from before it still runs against the upgraded schema. `0006` adds locations, stock levels and transfers and
   backfills a `MAIN` location; product totals are kept, but downgrading drops the per-location detail. `0007` adds
   the digest tables only; `0008` adds a nullable `products.price_breaks` column; `0009` adds nullable two-factor columns to `users`
-  (downgrading drops them, which turns two-factor login off for everyone); `0010` adds the `invitations` table. Before downgrading, restore the pre-upgrade backup rather
+  (downgrading drops them, which turns two-factor login off for everyone); `0010` adds the `invitations` table; `0011` adds `api_keys`, `webhook_endpoints` and `webhook_deliveries` (downgrading drops every key and endpoint). Before downgrading, restore the pre-upgrade backup rather
   than running `alembic downgrade` against production data.
 - **Model:** in the app, open *Models* and click *Roll back*, or call `POST /models/registry/rollback`. This re-activates
   the previously active version, whose artifact must still exist in the `artifacts` volume.
@@ -162,7 +162,7 @@ destructive: do it only with the owner's sign-off.
 | `SECRET_KEY` | Signs JWT access tokens and keys the refresh-token hashes. Rotating it signs everyone out. If `TOKEN_ENCRYPTION_KEYS` is unset in development, the Shopify token key is derived from it. |
 | `POSTGRES_PASSWORD` | Owner login, used by `migrate` only. Change it in Postgres first (`ALTER ROLE aurora PASSWORD ...`), then `.env`. |
 | `APP_DB_PASSWORD` | Runtime login. Update `.env`, then `docker compose run --rm migrate` (sets the new password) and `docker compose up -d api worker beat`. Expect a short gap while they restart. |
-| `TOKEN_ENCRYPTION_KEYS` | Comma-separated Fernet keys, newest first. Add the new key at the front, restart; old tokens still decrypt. Then run `docker compose run --rm api python -m app.cli reencrypt-tokens`; it exits non-zero and names any shop it could not decrypt (reconnect those). Remove the old key only after it reports no failures. |
+| `TOKEN_ENCRYPTION_KEYS` | Comma-separated Fernet keys, newest first. Add the new key at the front, restart; old tokens still decrypt. Then run `docker compose run --rm api python -m app.cli reencrypt-tokens`; it re-encrypts Shopify tokens, digest targets, webhook URLs and signing secrets and two-factor secrets, and exits non-zero if any could not be decrypted (it names Shopify shops to reconnect). Remove the old key only after it reports no failures. |
 | `SHOPIFY_API_SECRET` | Put the old value in `SHOPIFY_API_SECRET_PREVIOUS` while Shopify switches over; HMACs are accepted with either. |
 | `ANTHROPIC_API_KEY` | Replace and restart. Without a key the assistant answers from deterministic templates. |
 | `METRICS_TOKEN` | Update Prometheus' bearer token at the same time. |
@@ -197,6 +197,8 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | A user lost the phone with their authenticator app | *Users* page ("2FA on" badge), audit log `auth.login` with reason `bad_second_factor` | They can sign in with one of their recovery codes and set up the new phone from *Account and security*. Without codes, another admin uses *Reset two-factor* on the *Users* page: their sessions end and they set it up again (straight away if the organisation requires it). Admins cannot reset their own |
 | An organisation was scheduled for deletion by mistake | Red banner on every page, audit log `organisation.deletion_scheduled` | Any admin opens *Settings* → *Delete organisation* → *Cancel deletion* before the date shown. After the nightly task has run the data is gone; the only way back is restoring a backup (section 6) into a separate database |
 | Someone asks for their data or to be removed | *Account and security* → *Download my data* (they can do it themselves) | An admin uses *Delete* on the *Users* page. The account is anonymised and cannot sign in; audit events mentioning the old e-mail disappear with the organisation's audit retention |
+| A customer's webhook receiver gets nothing | *API and webhooks*: endpoint status, *Recent deliveries* errors; Beat and worker running (`aurora.deliver_webhooks`) | Use *Send test* to see the receiver's answer. A switched-off endpoint shows why; fix the receiver, then *Turn on* and *Retry* failed deliveries |
+| An API key leaked | Audit log entries with its prefix in the details | Revoke it on *API and webhooks* (takes effect on the next request), then review what it changed |
 | "This reset link is invalid" | Audit log `auth.password_reset` failures show the real reason (expired, used, superseded, inactive user) | Issue a new link; issuing one cancels older ones |
 | Alerts appear in the app but not in the webhook | *Settings* minimum severity, `ALERT_MIN_SEVERITY` | Only alerts at or above the organisation's minimum (default `high`) are sent to channels; lower ones stay in the app |
 | Stock on order looks wrong after purchasing | *Purchase orders* (filter *Open*), audit log `purchase_order.*` | `on_order` changes only when an order is sent, received or cancelled. Correct a mistake by cancelling the order (releases what is outstanding) or editing the product's stock, which is audited |
@@ -213,7 +215,8 @@ Beat runs these daily; each can also be run by hand:
 
 | Task | Schedule | Manual command |
 |---|---|---|
-| Delete refresh tokens expired over a day ago, OAuth states expired over an hour ago, spent or expired password reset links over a day old, processed webhook ids older than `WEBHOOK_EVENT_RETENTION_DAYS` (30), data export files older than 7 days | 03:30 UTC | `docker compose run --rm api python -m app.cli purge-expired` |
+| Delete refresh tokens expired over a day ago, OAuth states expired over an hour ago, spent or expired password reset links over a day old, processed webhook ids older than `WEBHOOK_EVENT_RETENTION_DAYS` (30), data export files older than 7 days, finished webhook deliveries older than 30 days | 03:30 UTC | `docker compose run --rm api python -m app.cli purge-expired` |
+| Send due outgoing webhook deliveries (every minute, not daily) | every 60 s | none (task `aurora.deliver_webhooks`) |
 | Delete organisations whose scheduled deletion is due (files, audit events, all rows); writes one `organisation.deleted` event | 03:45 UTC | none (task `aurora.purge_deleted_organisations`) |
 | Delete audit events older than each organisation's retention (Settings, default `AUDIT_RETENTION_DAYS` = 365); writes one `audit.retention_purge` event per organisation | 03:15 UTC | none (task `aurora.cleanup_audit_logs`) |
 | Mark jobs without a recent heartbeat as failed | every 10 minutes | none |

@@ -278,6 +278,18 @@ def purge_expired() -> dict:
         db.close()
 
 
+@celery_app.task(name="aurora.deliver_webhooks")
+def deliver_webhooks() -> dict:
+    """Send outgoing webhook deliveries that are due (ADR-043)."""
+    from app.services import webhooks
+
+    db = get_sessionmaker()()
+    try:
+        return webhooks.deliver_due(db)
+    finally:
+        db.close()
+
+
 @celery_app.task(name="aurora.reap_stale_jobs")
 def reap_stale_jobs() -> int:
     db = get_sessionmaker()()

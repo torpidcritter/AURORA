@@ -42,6 +42,9 @@ def record(
 
 
 def record_for(db: Session, principal: Any, action: str, **kw: Any) -> AuditEvent:
+    key = getattr(principal, "api_key", None)
+    if key:  # name the API key that made the change; its prefix is not secret
+        kw["details"] = {**(kw.get("details") or {}), "key_prefix": key}
     return record(
         db,
         action,

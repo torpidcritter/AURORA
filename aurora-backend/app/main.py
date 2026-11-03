@@ -27,6 +27,7 @@ ROUTERS = [
     ("app.api.routes.locations", "router"),
     ("app.api.routes.digests", "router"),
     ("app.api.routes.data_rights", "router"),
+    ("app.api.routes.developers", "router"),
 ]
 
 

@@ -665,3 +665,72 @@ __all__ = [
     "StockLevel",
     "StockTransfer",
 ]
+
+
+class ApiKey(TimestampMixin, Base):
+    """A key for other systems to call the API (ADR-043). Only the SHA-256 of the key is stored; the short prefix
+    finds the row. The key acts as `role`, capped at its creator's current role, and stops working when the creator
+    is deactivated or deleted."""
+
+    __tablename__ = "api_keys"
+    __table_args__ = (CheckConstraint("role IN ('viewer', 'operator', 'analyst')", name="ck_api_keys_role"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    prefix: Mapped[str] = mapped_column(String(16), unique=True, nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebhookEndpoint(TimestampMixin, Base):
+    """An address that receives signed event notifications (ADR-043). The URL and the signing secret are encrypted
+    at rest; `url_hint` shows only the host."""
+
+    __tablename__ = "webhook_endpoints"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    url_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    url_hint: Mapped[str] = mapped_column(String(300), nullable=False)
+    secret_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    events: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    disabled_reason: Mapped[str | None] = mapped_column(String(300))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class WebhookDelivery(TimestampMixin, Base):
+    """One event for one endpoint, written in the same transaction as the change it reports (an outbox), then sent
+    by the worker with retries."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'succeeded', 'failed')", name="ck_webhook_deliveries_status"),
+        Index("ix_webhook_deliveries_due", "next_attempt_at", postgresql_where=text("status = 'pending'")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    endpoint_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    event: Mapped[str] = mapped_column(String(80), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status_code: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(String(500))
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

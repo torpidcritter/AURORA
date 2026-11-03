@@ -45,10 +45,15 @@ SECRET_COLUMNS = frozenset(
         "token_hash",
         "target_encrypted",
         "access_token_enc",
+        "key_hash",
+        "url_encrypted",
+        "secret_encrypted",
     }
 )
 EXPORT_TABLES: tuple[type, ...] = (
     m.User,
+    m.ApiKey,
+    m.WebhookEndpoint,
     m.Location,
     m.Supplier,
     m.Product,

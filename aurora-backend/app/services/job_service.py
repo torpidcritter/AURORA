@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound, Unavailable
 from app.core.logging import request_id_var
 from app.db.models import Job
+from app.services import webhooks
 
 logger = logging.getLogger("aurora.jobs")
 MAX_ATTEMPTS = 3
@@ -143,7 +144,13 @@ def finish(
         values["result"] = result
     if error is not None:
         values["error"] = error[:4000]
-    db.execute(update(Job).where(Job.id == job_id, Job.status == "running").values(**values))
+    res = db.execute(update(Job).where(Job.id == job_id, Job.status == "running").values(**values))
+    if res.rowcount:
+        row = db.execute(select(Job.org_id, Job.kind).where(Job.id == job_id)).one()
+        data = {"id": str(job_id), "kind": row.kind, "status": status}
+        if error is not None:
+            data["error"] = error[:500]
+        webhooks.emit(db, row.org_id, "job.finished", data)
     db.commit()
 
 

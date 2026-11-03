@@ -14,6 +14,7 @@ from app.core.errors import Conflict, NotFound, ValidationFailed
 from app.db.models import ModelVersion
 from app.ml import training
 from app.ml.transformer_model import TimeSeriesTransformer
+from app.services import webhooks
 from app.storage import get_storage
 
 GATE_TOLERANCE = 0.05  # transformer may be at most 5% worse (relative WAPE) than the best baseline overall
@@ -113,6 +114,9 @@ def promote(db: Session, org_id: uuid.UUID, version_id: uuid.UUID, *, force: boo
     db.flush()
     mv.status = "active"
     mv.promoted_at = datetime.now(UTC)
+    webhooks.emit(
+        db, org_id, "model.promoted", {"id": str(mv.id), "version": mv.version, "forced": force, "metrics": mv.metrics}
+    )
     db.flush()
     return mv
 

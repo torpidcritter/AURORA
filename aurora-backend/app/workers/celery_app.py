@@ -39,6 +39,7 @@ celery_app.conf.update(
         "monitor-all-orgs": {"task": "aurora.monitor_all", "schedule": crontab(minute=0)},
         "dispatch-alerts": {"task": "aurora.poll_and_dispatch_alerts", "schedule": 300.0},
         "run-due-digests": {"task": "aurora.run_due_digests", "schedule": 300.0},
+        "deliver-webhooks": {"task": "aurora.deliver_webhooks", "schedule": 60.0},
         "reap-stale-jobs": {"task": "aurora.reap_stale_jobs", "schedule": 600.0},
         "cleanup-audit": {"task": "aurora.cleanup_audit_logs", "schedule": crontab(hour=3, minute=15)},
         "purge-expired": {"task": "aurora.purge_expired", "schedule": crontab(hour=3, minute=30)},

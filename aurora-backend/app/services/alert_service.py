@@ -7,13 +7,14 @@ import uuid
 from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import ColumnElement, case, func, select, text, update
+from sqlalchemy import ColumnElement, case, func, literal_column, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.errors import Conflict, NotFound
 from app.db.models import Alert, AlertDelivery, Organization
+from app.services import webhooks
 
 logger = logging.getLogger("aurora.alerts")
 SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
@@ -67,8 +68,23 @@ def upsert(
             "details": stmt.excluded.details,
             "updated_at": func.now(),
         },
-    ).returning(Alert.id)
-    return db.execute(stmt).scalar_one()
+    ).returning(Alert.id, literal_column("(xmax = 0)").label("inserted"))
+    row = db.execute(stmt).one()
+    if row.inserted:  # a new alert, not an update of an open one
+        webhooks.emit(
+            db,
+            org_id,
+            "alert.opened",
+            {
+                "id": str(row.id),
+                "kind": kind,
+                "severity": severity,
+                "title": title[:300],
+                "message": message,
+                "product_id": str(product_id) if product_id else None,
+            },
+        )
+    return row.id
 
 
 def resolve_where_cleared(db: Session, org_id: uuid.UUID, prefix: str, still_active: set[str]) -> int:
