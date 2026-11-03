@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.db.models import (
     AuditEvent,
     DigestSchedule,
+    ImportSource,
     Invitation,
     OAuthState,
     Organization,
@@ -23,7 +24,7 @@ from app.db.models import (
     WebhookEndpoint,
     WebhookEvent,
 )
-from app.services import assistant_actions, audit, settings_service, webhooks
+from app.services import assistant_actions, audit, import_service, settings_service, webhooks
 
 # Revoked or rotated refresh tokens are kept until they expire: reuse detection needs them. After expiry a reused
 # token is rejected anyway, so one extra day of grace is plenty.
@@ -64,6 +65,8 @@ def purge_expired(db: Session, now: datetime | None = None) -> dict[str, int]:
     counts["webhook_deliveries"] = webhooks.purge_old(db, now)
     # Assistant proposals older than 30 days, whatever their outcome (ADR-046); the audit log keeps the record.
     counts["assistant_proposals"] = assistant_actions.purge_old(db, now)
+    # Import run history older than 90 days (ADR-050); the sources and imported sales stay.
+    counts["import_runs"] = import_service.purge_old(db, now)
     db.commit()
     return counts
 
@@ -116,12 +119,15 @@ ENCRYPTED_COLUMNS = (
     (WebhookEndpoint, "secret_encrypted"),
     (User, "totp_secret"),
     (User, "totp_pending"),
+    (ImportSource, "url_encrypted"),
+    (ImportSource, "secret_encrypted"),
 )
 
 
 def reencrypt_secrets(db: Session) -> dict[str, int]:
-    """Re-encrypt digest targets, webhook URLs and secrets and two-factor secrets with the newest
-    TOKEN_ENCRYPTION_KEYS key, so older keys can be removed. Values no key can decrypt are counted, not changed."""
+    """Re-encrypt digest targets, webhook URLs and secrets, import addresses and credentials and two-factor secrets
+    with the newest TOKEN_ENCRYPTION_KEYS key, so older keys can be removed. Values no key can decrypt are counted,
+    not changed."""
     rotated = failed = 0
     for model, column in ENCRYPTED_COLUMNS:
         col = getattr(model, column)

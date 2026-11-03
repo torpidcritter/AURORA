@@ -290,6 +290,18 @@ def deliver_webhooks() -> dict:
         db.close()
 
 
+@celery_app.task(name="aurora.run_due_imports")
+def run_due_imports() -> dict:
+    """Run scheduled imports that are due (ADR-050)."""
+    from app.services import import_service
+
+    db = get_sessionmaker()()
+    try:
+        return import_service.run_due(db)
+    finally:
+        db.close()
+
+
 @celery_app.task(name="aurora.reap_stale_jobs")
 def reap_stale_jobs() -> int:
     db = get_sessionmaker()()

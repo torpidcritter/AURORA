@@ -162,7 +162,7 @@ destructive: do it only with the owner's sign-off.
 | `SECRET_KEY` | Signs JWT access tokens and keys the refresh-token hashes. Rotating it signs everyone out. If `TOKEN_ENCRYPTION_KEYS` is unset in development, the Shopify token key is derived from it. |
 | `POSTGRES_PASSWORD` | Owner login, used by `migrate` only. Change it in Postgres first (`ALTER ROLE aurora PASSWORD ...`), then `.env`. |
 | `APP_DB_PASSWORD` | Runtime login. Update `.env`, then `docker compose run --rm migrate` (sets the new password) and `docker compose up -d api worker beat`. Expect a short gap while they restart. |
-| `TOKEN_ENCRYPTION_KEYS` | Comma-separated Fernet keys, newest first. Add the new key at the front, restart; old tokens still decrypt. Then run `docker compose run --rm api python -m app.cli reencrypt-tokens`; it re-encrypts Shopify tokens, digest targets, webhook URLs and signing secrets and two-factor secrets, and exits non-zero if any could not be decrypted (it names Shopify shops to reconnect). Remove the old key only after it reports no failures. |
+| `TOKEN_ENCRYPTION_KEYS` | Comma-separated Fernet keys, newest first. Add the new key at the front, restart; old tokens still decrypt. Then run `docker compose run --rm api python -m app.cli reencrypt-tokens`; it re-encrypts Shopify tokens, digest targets, webhook URLs and signing secrets, import addresses and credentials and two-factor secrets, and exits non-zero if any could not be decrypted (it names Shopify shops to reconnect). Remove the old key only after it reports no failures. |
 | `SHOPIFY_API_SECRET` | Put the old value in `SHOPIFY_API_SECRET_PREVIOUS` while Shopify switches over; HMACs are accepted with either. |
 | `ANTHROPIC_API_KEY` | Replace and restart. Without a key the assistant answers from deterministic templates. |
 | `METRICS_TOKEN` | Update Prometheus' bearer token at the same time. |
@@ -211,6 +211,8 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 | Location totals do not match a stock take | *Locations*, *Recent transfers*, audit log `stock.transferred` and `inventory.update` | Count each location and save the count there; transfers between locations never change the product total |
 | A digest shows "failed" | *Digests* page, *View* on the digest shows the error; logs `aurora.digests` | Check the webhook still exists (Slack returns 404 for a removed one), or SMTP settings for e-mail. Fix the target and use *Send now*. Scheduled sends are not retried |
 | Digests are not sent at all | Celery beat running? Task `aurora.run_due_digests` in worker logs | Start beat (`celery -A app.workers.celery_app beat`); schedules whose slot passed are sent on the next tick |
+| A scheduled import failed or was paused | *Data imports*: last result and *History*; an "Import paused" alert after five failures in a row; logs `aurora.imports` | The message says what the other side answered (refused access: the key or header was revoked; 404: the file moved; redirect: use the final address). Fix it with *Import now* until it succeeds, then *Resume*. A rejected file keeps its quality report on *Upload data* |
+| Imports do not run at all | Beat running? Task `aurora.run_due_imports` in worker logs | Start beat; sources whose slot passed run on the next tick (every five minutes) |
 | Assistant says it is in fallback mode | Key missing, refused, or API error | Check `ANTHROPIC_API_KEY` and API logs. The fallback answers are deterministic and use the same authorised data |
 
 ## 10. Housekeeping
@@ -224,6 +226,7 @@ Beat runs these daily; each can also be run by hand:
 | Delete organisations whose scheduled deletion is due (files, audit events, all rows); writes one `organisation.deleted` event | 03:45 UTC | none (task `aurora.purge_deleted_organisations`) |
 | Delete audit events older than each organisation's retention (Settings, default `AUDIT_RETENTION_DAYS` = 365); writes one `audit.retention_purge` event per organisation | 03:15 UTC | none (task `aurora.cleanup_audit_logs`) |
 | Mark jobs without a recent heartbeat as failed | every 10 minutes | none |
+| Run due scheduled imports (ADR-050); import run history older than 90 days is deleted with `purge-expired` | every 5 minutes | *Import now* on *Data imports* |
 
 ## 11. Shopify app setup
 

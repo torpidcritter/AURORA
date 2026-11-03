@@ -649,3 +649,32 @@ The spec names files that do not exist here; the responsibilities live in these 
 - Phone layouts: a check at 375 px found nine pages that scrolled sideways, caused by grid items growing to their
   tables' minimum width and by screen-reader-only header text escaping table scroll boxes. Grid items now have
   `min-width: 0` and table scroll boxes are positioned; a browser test checks four of those pages at 375 px.
+- Demo workspace: `python -m app.cli seed-demo` already loads clearly labelled synthetic data into an organisation.
+  A self-service demo organisation from the interface is not built.
+
+## ADR-050 Scheduled imports: file addresses and WooCommerce
+- Two new connectors, both pull-based on a schedule (hourly, or daily at a chosen UTC hour) and run by Celery Beat
+  every five minutes, in the same claim-then-run pattern as digests so two workers never run one source together:
+  - **File at a web address**: a CSV, Excel or JSON file that another system publishes. Each run downloads it and
+    hands it to the manual upload pipeline unchanged (column mapping, validation, quality report, dataset history),
+    so there is one set of rules for files however they arrive. An unchanged file is recognised by its hash.
+  - **WooCommerce**: orders from the store's REST API with a read-only consumer key. Each run re-reads orders
+    created in a look-back window (default 14 days, at most 90) and replaces this store's sales for those days.
+    Replacing a window rather than adding orders one by one makes a run repeatable and picks up cancellations and
+    status changes inside the window without a per-order ledger. Processing, completed and on-hold orders count;
+    pending, cancelled, refunded and failed ones do not. Each store's sales carry their own `source` value, so a
+    store's replacement never touches uploads, Shopify or another store.
+- Limits written down rather than hidden: partial refunds and changes to orders older than the window are not
+  reflected; a window with more than 5,000 orders fails with a message to shorten it, and nothing is replaced, so a
+  run never leaves partial data. The window is replaced inside a savepoint for the same reason.
+- Addresses go through the same outbound checks as digest webhooks (HTTPS, no credentials in the address, public
+  addresses only, checked on save and before every request, no redirects), responses are capped at the upload size
+  limit, and the address (whose path or query is often the secret) and credentials are encrypted at rest and never
+  returned or written to the audit log; the list shows only the host.
+- A source that fails five times in a row is paused and raises a high alert, so a revoked key or moved file does
+  not fail silently every hour. Resuming resets the count. Run history is kept 90 days.
+- Managing sources needs `manage_integrations` (administrators), as for Shopify and API keys: a source holds a
+  credential for another system and changes the sales every forecast uses. Deleting a source keeps its sales unless
+  the person asks for them to be removed too.
+- Tested against fake servers only (`httpx.MockTransport`); no real WooCommerce store has been connected. Not done:
+  SFTP and cloud-storage buckets, Square, Lightspeed and other POS systems, and pushing stock levels back to stores.

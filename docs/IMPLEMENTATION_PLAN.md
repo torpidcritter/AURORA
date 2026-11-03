@@ -93,7 +93,8 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] PDF purchase orders and inventory report; saved views for list pages (ADR-047)
 - [x] Observability: alert rules, Grafana dashboard, job and webhook health metrics, optional Sentry with scrubbing (ADR-048)
 - [x] UX polish: light theme, keyboard shortcuts, low-stock browser notifications, number and date formats, phone layout fixes (ADR-049, docs/UX.md)
-- [ ] Next roadmap items: connectors;
+- [x] Connectors: scheduled imports from a file address or a WooCommerce store, paused with an alert after repeated failures (ADR-050)
+- [ ] Not built yet: SFTP and bucket imports, more POS connectors, a self-service demo organisation;
   per-location demand needs sales by location
 
 ## Follow-ups

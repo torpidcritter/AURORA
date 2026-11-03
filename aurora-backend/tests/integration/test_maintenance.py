@@ -84,6 +84,7 @@ def test_purge_expired_removes_only_dead_rows(client, org, db):
         "invitations": 0,
         "webhook_deliveries": 0,
         "assistant_proposals": 0,  # covered in test_assistant_actions
+        "import_runs": 0,  # covered in test_imports
     }
     assert db.scalar(select(func.count()).select_from(RefreshToken)) == live_before + 2
     assert set(db.scalars(select(OAuthState.state))) == {"new"}

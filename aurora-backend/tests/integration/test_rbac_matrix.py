@@ -127,6 +127,12 @@ MATRIX = [
     ("GET", "/saved-views?page=products", None, "viewer"),
     ("POST", "/saved-views", {"page": "products", "name": "x"}, "viewer"),
     ("DELETE", f"/saved-views/{X}", None, "viewer"),
+    ("GET", "/imports", None, "admin"),
+    ("POST", "/imports", {"name": "x", "kind": "file_url", "url": "https://example.com/a.csv"}, "admin"),
+    ("PATCH", f"/imports/{X}", {"expected_version": 1}, "admin"),
+    ("DELETE", f"/imports/{X}", None, "admin"),
+    ("POST", f"/imports/{X}/run", None, "admin"),
+    ("GET", f"/imports/{X}/runs", None, "admin"),
     ("GET", "/api-keys", None, "admin"),
     ("POST", "/api-keys", {"name": "k"}, "admin"),
     ("DELETE", f"/api-keys/{X}", None, "admin"),
@@ -252,6 +258,7 @@ def test_every_route_is_in_the_matrix(app):
             "{promo_id}",
             "{proposal_id}",
             "{view_id}",
+            "{source_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

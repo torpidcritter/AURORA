@@ -824,3 +824,62 @@ class SavedView(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     params: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+IMPORT_KINDS = ("file_url", "woocommerce")
+
+
+class ImportSource(TimestampMixin, Base):
+    """A scheduled import of sales from another system (ADR-050). The address and any credential are encrypted at
+    rest, because a file link or API key is often all it takes to read someone's sales."""
+
+    __tablename__ = "import_sources"
+    __table_args__ = (
+        CheckConstraint(f"kind IN {IMPORT_KINDS}", name="ck_import_sources_kind"),
+        CheckConstraint("frequency IN ('hourly','daily')", name="ck_import_sources_frequency"),
+        CheckConstraint("hour_utc BETWEEN 0 AND 23", name="ck_import_sources_hour"),
+        Index("ix_import_sources_due", "next_run_at", postgresql_where=text("is_active")),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    url_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
+    url_hint: Mapped[str] = mapped_column(String(300), nullable=False)  # scheme and host only, safe to show
+    secret_encrypted: Mapped[str | None] = mapped_column(Text)
+    options: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    frequency: Mapped[str] = mapped_column(String(10), nullable=False, default="daily")
+    hour_utc: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status: Mapped[str | None] = mapped_column(String(20))
+    last_message: Mapped[str | None] = mapped_column(String(500))
+    consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class ImportRun(Base):
+    """One attempt to import from a source: what came in, or why nothing did."""
+
+    __tablename__ = "import_runs"
+    __table_args__ = (
+        CheckConstraint("status IN ('imported','unchanged','failed')", name="ck_import_runs_status"),
+        Index("ix_import_runs_source_started", "source_id", "started_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("import_sources.id", ondelete="CASCADE"), nullable=False)
+    trigger: Mapped[str] = mapped_column(String(10), nullable=False, default="schedule")
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    products: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("datasets.id", ondelete="SET NULL"))
+    message: Mapped[str | None] = mapped_column(String(500))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -15,6 +15,8 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 - **Operations:** health checks, Prometheus metrics, alert rules and a Grafana dashboard (`deploy/monitoring/`,
   `docs/OBSERVABILITY.md`), JSON logs with request ids, optional Sentry error reporting with personal data stripped.
 - **Reports:** purchase orders and an inventory report as PDF; saved, shareable filter views on the main lists.
+- **Imports:** CSV/Excel/JSON uploads, Shopify webhooks, and scheduled imports from a file address or a
+  WooCommerce store (Admin → Data imports; tested against fake servers only).
 - **Display:** dark or light theme, keyboard shortcuts (`?`), low-stock browser notifications while Aurora is open,
   and local number and date formats (`docs/UX.md`; the interface text is English only).
 - **Inventory:** safety stock, reorder point and quantity (pack size, MOQ), days until stock-out, stock-out

@@ -433,6 +433,18 @@ test.describe.serial("Aurora end to end", () => {
     expect((await request.get(`${api}/products?limit=1`, { headers: auth })).status()).toBe(401);
   });
 
+  test("data imports page: private addresses are refused before anything is saved", async () => {
+    await page.goto("/dashboard");
+    await page.getByRole("link", { name: "Data imports" }).click();
+    await expect(page.getByRole("heading", { name: "Data imports" })).toBeVisible();
+    await page.getByLabel("Import name").fill("E2E private address");
+    // An IP literal needs no DNS, so this behaves the same in CI and offline.
+    await page.getByLabel("File address").fill("https://127.0.0.1/sales.csv");
+    await page.getByRole("button", { name: "Save import" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "private or reserved network" })).toBeVisible();
+    await expect(page.getByRole("listitem", { name: "Import E2E private address" })).toHaveCount(0);
+  });
+
   test("theme, keyboard shortcuts and phone-width layout", async () => {
     await page.goto("/dashboard");
     await page.getByRole("button", { name: /Theme: Dark/ }).click();

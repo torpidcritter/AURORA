@@ -73,6 +73,8 @@ EXPORT_TABLES: tuple[type, ...] = (
     m.ModelVersion,
     m.DigestSchedule,
     m.DigestRun,
+    m.ImportSource,
+    m.ImportRun,
     m.Invitation,
     m.AuditEvent,
 )
