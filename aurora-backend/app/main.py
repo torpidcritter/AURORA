@@ -29,6 +29,7 @@ ROUTERS = [
     ("app.api.routes.data_rights", "router"),
     ("app.api.routes.developers", "router"),
     ("app.api.routes.launches", "router"),
+    ("app.api.routes.promotions", "router"),
 ]
 
 

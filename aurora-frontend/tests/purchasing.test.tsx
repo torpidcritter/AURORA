@@ -146,7 +146,7 @@ describe("purchase order page", () => {
     renderPage();
     expect(await screen.findByText(/PO-000007 · Acme/)).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Lines of PO-000007" });
-    expect(within(table).getByText(/Suggested 12 \(risk high\) · 2.3 days of stock left · planner override applied · changed to 10/)).toBeInTheDocument();
+    expect(within(table).getByText(/Suggested 12 \(risk high\) · 2.3 days of stock left · forecast adjusted by a planner override or promotion · changed to 10/)).toBeInTheDocument();
     expect(screen.getByText(/below Acme's minimum/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();

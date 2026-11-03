@@ -537,3 +537,29 @@ The spec names files that do not exist here; the responsibilities live in these 
 - Recommendations use the launch forecast wherever they would use a product forecast, so reorder points, budget
   plans and drafts work for new products before their first sale. Planner overrides still apply on top. Saving and
   deleting plans is audited; plans use optimistic versions like other planner edits.
+
+## ADR-045 Promotions: measured lift, estimated uplift, applied to planning
+- A promotion has a name, first and last day (at most 92), the products on it (chosen, or a whole category resolved
+  to its products when saved, at most 500), an optional discount and an uplift: the factor by which demand is
+  expected to rise. Planners (`manage_overrides`, analyst and up) create, edit and delete them; everyone can view.
+- Measuring: once a promotion has started, each product's average daily sales during it are compared with the 28
+  days before it, leaving out days inside other promotions of the same product. The lift is during / before; the
+  dip is the 14 days after / before (customers stocking up). Products with fewer than 7 baseline days or no sales
+  before have no lift and are reported as such. The overall lift and extra units are weighted by baseline units.
+  This is a simple before/after comparison: it does not correct for trend, seasonality or other events, and the
+  page says so.
+- Estimating: a planned promotion's uplift is the median lift of the same products' past promotions; failing that,
+  of past promotions in the same category; failing that, of all past promotions. Past promotions whose discount is
+  within 10 points of the planned one are preferred when there are any. The basis is always shown, and a planner
+  can enter their own value instead (stored as `uplift_source = planner`). With no history there is no estimate and
+  the promotion does not change forecasts until an uplift is entered.
+- Applying: `override_service.adjust_points` multiplies the forecast used for decisions (recommendations, purchase
+  order suggestions, budget plans, category totals, the forecast view) by the uplift on each promotion day. A
+  planner override on the same product and day wins, because it is the more specific decision; with two overlapping
+  promotions the larger uplift is used. Adjusted days drop their interval, as for overrides. The stored model
+  forecast is never changed, so past promotions stay measurable.
+- A finished promotion is a record of what happened: only its name and notes can change. Promotions use optimistic
+  versions, are audited (`promotion.created`, `.updated`, `.deleted`), included in the organisation export and
+  scoped to the organisation.
+- Not done: promotion effects are not yet fed to the models as a training feature (the history still contains the
+  spikes), and cannibalisation of products not on promotion is not modelled.

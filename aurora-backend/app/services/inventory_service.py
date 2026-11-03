@@ -140,10 +140,17 @@ def recommendation(
         # Planner overrides change the demand used for decisions; the stored model forecast is left as it was.
         adjusted, applied = override_service.adjust_points(db, org_id, product.id, fc["points"])
         daily = [p["yhat"] for p in adjusted]
-        if applied:
+        manual = [a for a in applied if a["kind"] != "promotion"]
+        promos = [a for a in applied if a["kind"] == "promotion"]
+        if manual:
             assumptions.append(
-                f"Planner override applied to {sum(a['days'] for a in applied)} forecast day(s): "
-                + "; ".join(a["reason"] for a in applied)
+                f"Planner override applied to {sum(a['days'] for a in manual)} forecast day(s): "
+                + "; ".join(a["reason"] for a in manual)
+            )
+        if promos:
+            assumptions.append(
+                f"Promotion uplift applied to {sum(a['days'] for a in promos)} forecast day(s): "
+                + "; ".join(f"{a['reason'].removeprefix('Promotion: ')} ×{a['value']:g}" for a in promos)
             )
     sigma = float(fc.get("error_sd") or 0.0) * sigma_multiplier
     try:

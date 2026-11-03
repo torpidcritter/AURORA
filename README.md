@@ -11,7 +11,7 @@ services. See [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) f
 ## What it does
 - **Forecasting:** five statistical baselines and a Transformer, chosen per product by rolling-origin backtests;
   split-conformal prediction intervals; MC-dropout uncertainty; permutation feature importance; category and
-  organisation forecasts that add up to the product forecasts; launch plans that forecast new products from similar ones.
+  organisation forecasts that add up to the product forecasts; launch plans that forecast new products from similar ones; promotions measured afterwards (lift, dip) and applied to planned demand.
 - **Inventory:** safety stock, reorder point and quantity (pack size, MOQ), days until stock-out, stock-out
   probability, urgency, a risk matrix and what-if scenarios; an overstock and dead-stock report.
 - **Purchasing:** suppliers, purchase orders from draft to received (with approval, partial receipts and CSV export),

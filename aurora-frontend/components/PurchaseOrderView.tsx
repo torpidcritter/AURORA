@@ -184,7 +184,7 @@ function suggestionText(s: Record<string, unknown> | null, suggested: number | n
   if (!s) return "Added by hand";
   const parts = [`Suggested ${suggested ?? "?"} (risk ${String(s.risk_level ?? "?")})`];
   if (typeof s.days_until_stockout === "number") parts.push(`${s.days_until_stockout.toFixed(1)} days of stock left`);
-  if (Number(s.overrides_applied) > 0) parts.push("planner override applied");
+  if (Number(s.overrides_applied) > 0) parts.push("forecast adjusted by a planner override or promotion");
   if (suggested != null && suggested !== qty) parts.push(`changed to ${qty}`);
   return parts.join(" · ");
 }

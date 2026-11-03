@@ -899,3 +899,53 @@ export interface LaunchRow extends LaunchPlan {
   own_days: number;
   active: boolean;
 }
+
+export type PromotionStatus = "planned" | "running" | "finished";
+
+export interface Promotion {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  product_ids: string[];
+  product_count: number;
+  category: string | null;
+  discount_pct: number | null;
+  uplift: number | null;
+  uplift_source: "planner" | "estimated" | "none";
+  notes: string;
+  status: PromotionStatus;
+  version: number;
+  created_at: string;
+}
+
+export interface PromotionEstimate {
+  uplift: number | null;
+  basis: string;
+  promotions: number;
+  observations?: number;
+}
+
+export interface PromotionProductResult {
+  product_id: string;
+  sku: string | null;
+  lift: number | null;
+  dip: number | null;
+  baseline_per_day?: number;
+  during_per_day?: number;
+  incremental_units?: number;
+  note?: string;
+}
+
+export interface PromotionMeasurement {
+  products: PromotionProductResult[];
+  measured_products: number;
+  lift: number | null;
+  incremental_units: number | null;
+  days_observed: number;
+}
+
+export interface PromotionDetail extends Promotion {
+  measurement: PromotionMeasurement | null;
+  estimate: PromotionEstimate | null;
+}

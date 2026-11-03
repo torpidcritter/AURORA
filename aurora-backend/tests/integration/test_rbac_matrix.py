@@ -108,6 +108,17 @@ MATRIX = [
     ("GET", f"/products/{X}/launch/analogues", None, "viewer"),
     ("PUT", f"/products/{X}/launch", {"launch_date": "2026-01-01", "analogue_ids": [X]}, "analyst"),
     ("DELETE", f"/products/{X}/launch", None, "analyst"),
+    ("GET", "/promotions", None, "viewer"),
+    (
+        "POST",
+        "/promotions",
+        {"name": "x", "start_date": "2026-01-01", "end_date": "2026-01-02", "product_ids": [X]},
+        "analyst",
+    ),
+    ("POST", "/promotions/estimate", {"product_ids": [X]}, "viewer"),
+    ("GET", f"/promotions/{X}", None, "viewer"),
+    ("PATCH", f"/promotions/{X}", {"notes": "x"}, "analyst"),
+    ("DELETE", f"/promotions/{X}", None, "analyst"),
     ("GET", "/api-keys", None, "admin"),
     ("POST", "/api-keys", {"name": "k"}, "admin"),
     ("DELETE", f"/api-keys/{X}", None, "admin"),
@@ -230,6 +241,7 @@ def test_every_route_is_in_the_matrix(app):
             "{key_id}",
             "{endpoint_id}",
             "{delivery_id}",
+            "{promo_id}",
         ):
             norm = norm.replace(param, "{id}")
         for method in getattr(route, "methods", set()) - {"HEAD", "OPTIONS"}:

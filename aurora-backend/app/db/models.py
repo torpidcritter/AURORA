@@ -755,3 +755,32 @@ class ProductLaunch(TimestampMixin, Base):
     notes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class Promotion(TimestampMixin, Base):
+    """A planned or past promotion (ADR-045). Past ones are measured against the sales before them; planned ones
+    raise the forecast used for decisions by `uplift` on their dates, unless a planner override covers the day."""
+
+    __tablename__ = "promotions"
+    __table_args__ = (
+        CheckConstraint("end_date >= start_date", name="ck_promotions_dates"),
+        CheckConstraint("uplift IS NULL OR (uplift > 0 AND uplift <= 10)", name="ck_promotions_uplift"),
+        CheckConstraint(
+            "discount_pct IS NULL OR (discount_pct >= 0 AND discount_pct <= 95)", name="ck_promotions_disc"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    product_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    category: Mapped[str | None] = mapped_column(String(200))
+    discount_pct: Mapped[float | None] = mapped_column(Float)
+    uplift: Mapped[float | None] = mapped_column(Float)
+    uplift_source: Mapped[str] = mapped_column(String(20), nullable=False, default="planner")
+    notes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

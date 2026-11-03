@@ -75,6 +75,29 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByText(/No launch plan/)).toBeVisible();
   });
 
+  test("a planned promotion is created with its own uplift and deleted", async () => {
+    const name = `E2E promo ${Date.now()}`;
+    await page.goto("/promotions");
+    await page.getByRole("button", { name: "Plan a promotion" }).click();
+    await page.getByLabel("Name", { exact: true }).fill(name);
+    await page.getByLabel("First day").fill("2099-03-01");
+    await page.getByLabel("Last day").fill("2099-03-07");
+    const picker = page.getByLabel("Product 1", { exact: true });
+    await expect(picker.locator("option").nth(1)).toBeAttached();
+    await picker.selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Estimate uplift" }).click();
+    await expect(page.getByRole("status").filter({ hasText: /from|No estimate/ })).toBeVisible();
+    await page.getByLabel("Expected uplift (×)").fill("1.5");
+    await page.getByRole("button", { name: "Create promotion" }).click();
+    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    await expect(page.getByText("×1.5 (+50%)")).toBeVisible();
+    await expect(page.getByText("entered by a planner")).toBeVisible();
+    await page.getByRole("button", { name: "Delete promotion" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete promotion" }).click();
+    await expect(page).toHaveURL(/\/promotions$/);
+    await expect(page.getByText(name)).toHaveCount(0);
+  });
+
   test("recommendations, risk matrix and scenario run", async () => {
     await page.goto("/inventory");
     await expect(page.getByRole("table", { name: "Inventory recommendations" })).toBeVisible({ timeout: 60_000 });

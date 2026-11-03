@@ -53,7 +53,7 @@ def adjusted_value(o: ForecastOverride, model_yhat: float) -> float:
 def adjust_points(
     db: Session, org_id: uuid.UUID, product_id: uuid.UUID, points: list[dict]
 ) -> tuple[list[dict], list[dict]]:
-    """Apply active overrides to forecast points ({"date", "yhat", ...}).
+    """Apply active overrides and promotion uplifts to forecast points ({"date", "yhat", ...}).
 
     Returns the adjusted points (each keeps the model's value as ``yhat_model`` where it changed) and one summary per
     override that touched the horizon. Interval bounds of an adjusted day are dropped: they describe the model's
@@ -61,21 +61,41 @@ def adjust_points(
     """
     if not points:
         return points, []
+    from app.services import promotion_service  # local import: promotion_service is a peer, not a dependency
+
     start, end = date.fromisoformat(points[0]["date"]), date.fromisoformat(points[-1]["date"])
     overrides = active_for(db, org_id, product_id, start, end)
-    if not overrides:
+    promos = promotion_service.active_for(db, org_id, product_id, start, end)
+    if not overrides and not promos:
         return points, []
     out, touched = [], {}
     for p in points:
         d = date.fromisoformat(p["date"])
         o = next((o for o in overrides if o.start_date <= d <= o.end_date), None)
-        if o is None:
-            out.append(p)
-            continue
-        out.append(
-            {**p, "yhat": round(adjusted_value(o, p["yhat"]), 4), "yhat_model": p["yhat"], "lower": None, "upper": None}
-        )
-        t = touched.setdefault(o.id, {"id": str(o.id), "kind": o.kind, "value": o.value, "reason": o.reason, "days": 0})
+        if o is not None:
+            value = adjusted_value(o, p["yhat"])
+            t = touched.setdefault(
+                o.id, {"id": str(o.id), "kind": o.kind, "value": o.value, "reason": o.reason, "days": 0}
+            )
+        else:
+            # A planner override on the day wins; otherwise the largest uplift of the promotions running that day.
+            running = [x for x in promos if x.start_date <= d <= x.end_date]
+            if not running:
+                out.append(p)
+                continue
+            pr = max(running, key=lambda x: float(x.uplift or 1))
+            value = float(p["yhat"]) * float(pr.uplift or 1)
+            t = touched.setdefault(
+                pr.id,
+                {
+                    "id": str(pr.id),
+                    "kind": "promotion",
+                    "value": pr.uplift,
+                    "reason": f"Promotion: {pr.name}",
+                    "days": 0,
+                },
+            )
+        out.append({**p, "yhat": round(value, 4), "yhat_model": p["yhat"], "lower": None, "upper": None})
         t["days"] += 1
     return out, list(touched.values())
 
