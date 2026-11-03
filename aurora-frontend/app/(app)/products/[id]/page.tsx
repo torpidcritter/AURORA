@@ -6,6 +6,7 @@ import useSWR from "swr";
 
 import { DemandForecastChart } from "@/components/charts";
 import { InventoryEditor } from "@/components/InventoryEditor";
+import { LaunchPlanCard } from "@/components/LaunchPlanCard";
 import { OverridesCard } from "@/components/OverridesCard";
 import { PriceBreaksEditor } from "@/components/PriceBreaksEditor";
 import { StockByLocation } from "@/components/StockByLocation";
@@ -254,6 +255,8 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             runForecast();
           }}
         />
+
+        <LaunchPlanCard productId={p.id} editable={can("manage_overrides")} onChanged={async () => { await loadRec(); }} />
       </div>
     </>
   );

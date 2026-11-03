@@ -734,3 +734,24 @@ class WebhookDelivery(TimestampMixin, Base):
     last_status_code: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(String(500))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProductLaunch(TimestampMixin, Base):
+    """A new product's launch plan (ADR-044): until the product has enough sales of its own, its demand is taken
+    from the first weeks of similar products (analogues), scaled, and corrected by its own early sales."""
+
+    __tablename__ = "product_launches"
+    __table_args__ = (CheckConstraint("scale > 0 AND scale <= 20", name="ck_product_launches_scale"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=_uuid)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    launch_date: Mapped[date] = mapped_column(Date, nullable=False)
+    analogue_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    scale: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    notes: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

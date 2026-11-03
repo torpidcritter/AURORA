@@ -51,6 +51,30 @@ test.describe.serial("Aurora end to end", () => {
     await expect(page.getByRole("definition").filter({ hasText: /^9 days$/ })).toBeVisible();
   });
 
+  test("a launch plan forecasts a product from a similar one", async () => {
+    await page.goto("/products");
+    await page.getByRole("table", { name: "Products" }).getByRole("link").nth(1).click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("·");
+    const sku = (await page.getByRole("heading", { level: 1 }).innerText()).split(" · ")[0];
+    await page.getByRole("button", { name: "Plan a launch" }).click();
+    await page.getByLabel("Launch date", { exact: true }).fill("2099-01-01");
+    const picker = page.getByLabel("Similar product 1", { exact: true });
+    await expect(picker.locator("option").nth(2)).toBeAttached();
+    const options = await picker.locator("option").allTextContents();
+    const other = options.find((o) => o.includes(" · ") && !o.startsWith(`${sku} `));
+    await picker.selectOption({ label: other! });
+    await page.getByLabel("Expected sales (% of similar products)").fill("50");
+    await page.getByRole("button", { name: "Save launch plan" }).click();
+    await expect(page.getByText("First 13 weeks")).toBeVisible();
+    await expect(page.getByText("Not launched yet.")).toBeVisible();
+    await page.goto("/launches");
+    await expect(page.getByRole("table", { name: "Launch plans" })).toContainText(sku);
+    await page.getByRole("table", { name: "Launch plans" }).getByRole("link", { name: sku }).click();
+    await page.getByRole("button", { name: "Delete plan" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete plan" }).click();
+    await expect(page.getByText(/No launch plan/)).toBeVisible();
+  });
+
   test("recommendations, risk matrix and scenario run", async () => {
     await page.goto("/inventory");
     await expect(page.getByRole("table", { name: "Inventory recommendations" })).toBeVisible({ timeout: 60_000 });
@@ -330,17 +354,18 @@ test.describe.serial("Aurora end to end", () => {
     const api = process.env.API_URL ?? "http://127.0.0.1:8100";
     await page.goto("/admin/developers");
     await expect(page.getByText("alert.opened")).toBeVisible();
-    await page.getByLabel("Key name", { exact: true }).fill("E2E key");
+    const keyName = `E2E key ${Date.now()}`; // unique, so reruns against the same database stay unambiguous
+    await page.getByLabel("Key name", { exact: true }).fill(keyName);
     await page.getByLabel("Key role", { exact: true }).selectOption("viewer");
     await page.getByRole("button", { name: "Create key" }).click();
-    const secret = await page.getByLabel("New API key “E2E key” value").inputValue();
+    const secret = await page.getByLabel(`New API key “${keyName}” value`).inputValue();
     expect(secret).toMatch(/^aur_[0-9a-f]{8}_/);
     const auth = { Authorization: `Bearer ${secret}` };
     expect((await request.get(`${api}/products?limit=1`, { headers: auth })).status()).toBe(200);
     expect((await request.get(`${api}/auth/me`, { headers: auth })).status()).toBe(403);
     await page.getByRole("button", { name: "Done" }).click();
 
-    const row = page.getByRole("table", { name: "API keys" }).getByRole("row", { name: /E2E key/ });
+    const row = page.getByRole("table", { name: "API keys" }).getByRole("row", { name: new RegExp(keyName) });
     await row.getByRole("button", { name: "Revoke" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Revoke key" }).click();
     await expect(row).toContainText("revoked");

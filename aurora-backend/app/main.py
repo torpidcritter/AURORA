@@ -28,6 +28,7 @@ ROUTERS = [
     ("app.api.routes.digests", "router"),
     ("app.api.routes.data_rights", "router"),
     ("app.api.routes.developers", "router"),
+    ("app.api.routes.launches", "router"),
 ]
 
 

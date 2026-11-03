@@ -46,6 +46,7 @@ export const METHOD_LABELS: Record<string, string> = {
   sma: "Moving average",
   ses: "Exponential smoothing",
   holt_winters: "Holt-Winters",
+  launch_analogue: "Launch plan (analogue products)",
   seasonal_naive: "Seasonal naive",
   croston_sba: "Croston (intermittent)",
 };

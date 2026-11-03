@@ -14,6 +14,7 @@ from app.domain import pricing
 from app.domain.inventory import InventoryInputError, InventoryInputs, compute
 from app.services import (
     forecast_service,
+    launch_service,
     model_registry,
     override_service,
     series,
@@ -67,6 +68,9 @@ def _pct(x: float) -> str:
 
 
 def forecast_for(db: Session, org_id: uuid.UUID, product: Product, horizon: int, fast: bool) -> dict | None:
+    plan = launch_service.applies(db, org_id, product)
+    if plan is not None:  # a new product: demand comes from its launch plan until it has its own history
+        return launch_service.forecast(db, org_id, product, plan, horizon)
     y, _ = series.load_series(db, org_id, product.id)
     if y.empty:
         return None
@@ -126,7 +130,7 @@ def recommendation(
             **base,
             "status": "no_forecast",
             "risk_level": "unknown",
-            "message": "No sales history, so demand cannot be forecast.",
+            "message": "No sales history, so demand cannot be forecast. For a new product, add a launch plan.",
             "assumptions": assumptions,
         }
     applied: list[dict] = []

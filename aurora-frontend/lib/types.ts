@@ -854,3 +854,48 @@ export interface WebhookDelivery {
   created_at: string;
   delivered_at: string | null;
 }
+
+export interface LaunchPlan {
+  id: string;
+  product_id: string;
+  launch_date: string;
+  analogue_ids: string[];
+  scale: number;
+  notes: string;
+  version: number;
+  created_at: string;
+}
+
+export interface LaunchAnalogueNote {
+  product_id: string;
+  sku: string;
+  used: boolean;
+  reason?: string;
+  days?: number;
+  first_sale?: string;
+}
+
+export interface LaunchPreview {
+  plan: LaunchPlan;
+  active: boolean;
+  handover_days: number;
+  forecast: Forecast & {
+    launch: { launch_date: string; scale: number; effective_scale: number; own_days: number; analogues: LaunchAnalogueNote[] };
+  };
+  totals: { first_4_weeks: number; first_13_weeks: number };
+}
+
+export interface LaunchSuggestion {
+  product_id: string;
+  sku: string;
+  name: string;
+  category: string | null;
+  first_sale: string;
+}
+
+export interface LaunchRow extends LaunchPlan {
+  sku: string;
+  name: string;
+  own_days: number;
+  active: boolean;
+}

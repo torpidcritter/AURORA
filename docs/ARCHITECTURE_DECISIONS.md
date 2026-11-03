@@ -521,3 +521,19 @@ The spec names files that do not exist here; the responsibilities live in these 
 - Retries back off 1 m, 5 m, 30 m, 2 h, 12 h (6 attempts). Delivery is at least once and unordered; receivers
   de-duplicate on the delivery id. After 30 consecutive failed attempts an endpoint is switched off with a reason.
   Finished deliveries are deleted after 30 days by the nightly purge. Receiver guide: `docs/WEBHOOKS.md`.
+
+## ADR-044 Launch plans for new products from analogue products
+- A product with little or no sales history cannot be forecast from its own data. A planner (`manage_overrides`,
+  analyst and up) attaches a launch plan: a launch date, one to five similar products (analogues) and an expected
+  level relative to them (5% to 2000%).
+- Each analogue's daily sales are aligned on its own first sale and its first 180 days are used; an analogue needs
+  at least 28 days. The curves are averaged day by day and smoothed over a week, so the ramp-up shape is kept. The
+  spread between analogues gives the interval (about 80%); with one analogue a 30% spread is assumed and stated.
+  This is a planning estimate: it is labelled "Launch plan (analogue products)", has no backtest and is never
+  described as calibrated.
+- After launch the product's own sales correct the level: the ratio of actual to planned units, clipped to 0.2 to
+  5, is applied with a weight that grows to full over 28 days. With 56 days of its own history the product is
+  forecast like any other and the plan stays only as a record.
+- Recommendations use the launch forecast wherever they would use a product forecast, so reorder points, budget
+  plans and drafts work for new products before their first sale. Planner overrides still apply on top. Saving and
+  deleting plans is audited; plans use optimistic versions like other planner edits.
