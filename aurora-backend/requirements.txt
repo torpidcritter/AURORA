@@ -26,6 +26,7 @@ PyJWT==2.15.1
 python-multipart==0.0.32
 redis==8.1.0
 scipy==1.18.1
+sentry-sdk==2.43.0
 SQLAlchemy==2.1.6
 statsmodels==0.15.0
 torch==2.14.1

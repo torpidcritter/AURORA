@@ -607,3 +607,21 @@ The spec names files that do not exist here; the responsibilities live in these 
   delete a shared one. At most 30 per user per page. Sharing and deleting shared views are audited; private views
   are personal preferences and are not. Views are in the organisation export and go with the user's account.
 - Not done: scheduled PDF delivery (digests still send text), and views do not yet put filters in the page address.
+
+## ADR-048 Observability: alert rules, dashboard and optional error reporting
+- The existing Prometheus metrics gain the health signals an operator needs to be woken for: the age of the oldest
+  queued job, running jobs whose heartbeat stopped, outgoing webhook deliveries by status and those overdue (the
+  sender is not running), assistant answers by mode, pending assistant proposals, and `aurora_build_info`. Like the
+  other state metrics they are read from PostgreSQL at scrape time and carry no organisation, product or user labels.
+- `deploy/monitoring/` holds Prometheus alert rules (each with a severity, `page` or `ticket`, and a link to a "what
+  to check first" section in `docs/OBSERVABILITY.md`), a Grafana dashboard, and Prometheus and Alertmanager examples
+  with no addresses or keys. A test scrapes `/metrics` and fails if a rule or panel uses a metric the app does not
+  export, and checks every rule's runbook link exists.
+- Error reporting uses the Sentry SDK and is off unless `SENTRY_DSN` is set (an empty value counts as unset), so no
+  account is needed to run Aurora. Before an event leaves the process it loses request bodies, cookies, query
+  strings, all headers except a short allow-list, the user's e-mail and IP address and local variables, and values
+  under sensitive keys are redacted as in the logs (`send_default_pii` is off as well). Events carry the request id
+  and the component (`api` or `worker`), and the release from `APP_RELEASE`. Tracing is off unless
+  `SENTRY_TRACES_SAMPLE_RATE` is above 0.
+- Not done: no paging service is configured (that needs an account), there is no external uptime check, and
+  OpenTelemetry tracing across the API and worker is not set up.

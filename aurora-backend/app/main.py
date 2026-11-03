@@ -8,6 +8,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core import error_reporting
 from app.core.config import get_settings
 from app.core.errors import install_error_handlers
 from app.core.logging import configure_logging
@@ -37,9 +38,10 @@ ROUTERS = [
 def create_app() -> FastAPI:
     s = get_settings()
     configure_logging(s.log_level, s.log_json)
+    error_reporting.init("api")
     app = FastAPI(
         title="Aurora API",
-        version="0.1.0",
+        version=s.app_release or "0.1.0",
         description="Demand forecasting and inventory intelligence API.",
         docs_url="/docs",
         redoc_url=None,

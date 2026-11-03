@@ -33,6 +33,12 @@ HTTP_LATENCY = Histogram(
     registry=REGISTRY,
 )
 WEBHOOKS = Counter("aurora_webhooks_total", "Inbound webhooks", ["provider", "outcome"], registry=REGISTRY)
+ASSISTANT = Counter(
+    "aurora_assistant_answers_total", "Assistant answers by mode (claude or fallback)", ["mode"], registry=REGISTRY
+)
+
+STALE_HEARTBEAT_S = 600  # a running job that has not reported for this long is probably stuck
+WEBHOOK_OVERDUE_S = 600
 
 TRAINING_BUCKETS = (5, 15, 30, 60, 120, 300, 600, 1800)
 QUEUES = ("default", "training")
@@ -62,9 +68,12 @@ class StateCollector:
             yield from self._cached
 
     def _compute(self) -> list:
+        from datetime import UTC, datetime, timedelta
+
         from sqlalchemy import func, select
 
-        from app.db.models import Alert, ForecastRun, Job
+        from app.core.config import get_settings
+        from app.db.models import Alert, AssistantProposal, ForecastRun, Job, WebhookDelivery
         from app.db.session import get_sessionmaker
 
         out: list = []
@@ -92,6 +101,66 @@ class StateCollector:
             for method, n in db.execute(select(ForecastRun.method, func.count()).group_by(ForecastRun.method)):
                 forecasts.add_metric([method], n)
             out.append(forecasts)
+
+            now = datetime.now(UTC)
+            oldest = db.scalar(select(func.min(Job.created_at)).where(Job.status == "queued"))
+            out.append(
+                GaugeMetricFamily(
+                    "aurora_oldest_queued_job_age_seconds",
+                    "Age of the oldest job still waiting for a worker (0 when none)",
+                    value=max(0.0, (now - oldest).total_seconds()) if oldest else 0.0,
+                )
+            )
+            stale = db.scalar(
+                select(func.count())
+                .select_from(Job)
+                .where(
+                    Job.status == "running",
+                    func.coalesce(Job.heartbeat_at, Job.started_at) < now - timedelta(seconds=STALE_HEARTBEAT_S),
+                )
+            )
+            out.append(
+                GaugeMetricFamily(
+                    "aurora_jobs_heartbeat_stale",
+                    f"Running jobs with no heartbeat for {STALE_HEARTBEAT_S} seconds",
+                    value=stale or 0,
+                )
+            )
+            deliveries = GaugeMetricFamily(
+                "aurora_webhook_deliveries", "Stored outgoing webhook deliveries by status", labels=["status"]
+            )
+            for status, n in db.execute(select(WebhookDelivery.status, func.count()).group_by(WebhookDelivery.status)):
+                deliveries.add_metric([status], n)
+            out.append(deliveries)
+            overdue = db.scalar(
+                select(func.count())
+                .select_from(WebhookDelivery)
+                .where(
+                    WebhookDelivery.status == "pending",
+                    WebhookDelivery.next_attempt_at < now - timedelta(seconds=WEBHOOK_OVERDUE_S),
+                )
+            )
+            out.append(
+                GaugeMetricFamily(
+                    "aurora_webhook_deliveries_overdue",
+                    f"Pending deliveries over {WEBHOOK_OVERDUE_S} s past due (is the sender running?)",
+                    value=overdue or 0,
+                )
+            )
+            pending = db.scalar(
+                select(func.count())
+                .select_from(AssistantProposal)
+                .where(AssistantProposal.status == "pending", AssistantProposal.expires_at > now)
+            )
+            out.append(
+                GaugeMetricFamily(
+                    "aurora_assistant_proposals_pending", "Assistant proposals awaiting a decision", value=pending or 0
+                )
+            )
+            s = get_settings()
+            info = GaugeMetricFamily("aurora_build_info", "Release and environment", labels=["release", "environment"])
+            info.add_metric([s.app_release or "unknown", s.environment], 1)
+            out.append(info)
 
             open_alerts = db.scalar(select(func.count()).select_from(Alert).where(Alert.status != "resolved")) or 0
             out.append(

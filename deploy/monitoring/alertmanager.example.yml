@@ -1,0 +1,17 @@
+# Example Alertmanager routing (ADR-048). "page" alerts go to the on-call receiver, "ticket" alerts to e-mail.
+# Fill in your own receivers; no addresses or keys are kept in the repository.
+route:
+  receiver: team-email
+  group_by: [alertname]
+  routes:
+    - matchers: [severity="page"]
+      receiver: on-call
+receivers:
+  - name: team-email
+    email_configs:
+      - to: "ops@example.com"            # replace
+        from: "alerts@example.com"       # replace
+        smarthost: "smtp.example.com:587" # replace; credentials go in Alertmanager's own secret store
+  - name: on-call
+    webhook_configs:
+      - url: "https://pager.example.com/hook" # replace with your paging service's integration URL

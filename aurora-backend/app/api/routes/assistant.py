@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import Principal, require
 from app.core import rate_limit
+from app.core.metrics import ASSISTANT
 from app.core.security import Perm
 from app.db.session import get_db
 from app.services import assistant_actions, assistant_service, audit
@@ -69,6 +70,7 @@ def chat(body: ChatIn, p: Principal = Depends(require(Perm.read)), db: Session =
             merged.append(dict(t))
     history = merged
     res = assistant_service.answer(db, p, body.message.strip(), history)
+    ASSISTANT.labels(res["mode"]).inc()
     # Audit what was accessed, not what was asked: questions can contain personal data.
     audit.record_for(
         db,

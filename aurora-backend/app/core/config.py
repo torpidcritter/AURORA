@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     token_encryption_keys: SecretStr | None = None
 
     metrics_token: SecretStr | None = Field(default=None, description="Bearer token required by /metrics when set")
+    # Error reporting (ADR-048). Off unless SENTRY_DSN is set; personal data is stripped before anything is sent.
+    sentry_dsn: SecretStr | None = None
+    sentry_traces_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    app_release: str | None = Field(default=None, description="Build or git version, reported with errors and metrics")
     # Shared with the web app's BFF (server-side only). When set, the client address the BFF reports in
     # X-Aurora-Client-IP is trusted if X-Aurora-BFF carries this value. Needed when the API is publicly reachable.
     bff_shared_secret: SecretStr | None = None

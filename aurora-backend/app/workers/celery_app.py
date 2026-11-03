@@ -10,6 +10,7 @@ from celery import Celery, signals
 from celery.schedules import crontab
 from kombu import Queue
 
+from app.core import error_reporting
 from app.core.config import get_settings
 from app.core.logging import configure_logging, request_id_var, task_var
 
@@ -53,6 +54,7 @@ celery_app.conf.update(
 def _logging(**_: object) -> None:
     """Workers and Beat log the same JSON lines as the API instead of Celery's own format."""
     configure_logging(s.log_level, s.log_json)
+    error_reporting.init("worker")
 
 
 _task_tokens: dict[str, tuple] = {}

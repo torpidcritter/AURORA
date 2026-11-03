@@ -171,6 +171,9 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
 
 ## 8. Monitoring
 
+- **Start with `docs/OBSERVABILITY.md`**: alert rules, a Grafana dashboard and Prometheus and Alertmanager examples
+  are in `deploy/monitoring/`, and each alert has a "what to check first" section there. Error reporting to Sentry is
+  on when `SENTRY_DSN` is set.
 - Liveness `GET /health/live`; readiness `GET /health/ready` (DB, Redis and storage, 503 when one fails); summary `GET /health`.
 - Prometheus: scrape `api:8100/metrics` from inside the network with `Authorization: Bearer $METRICS_TOKEN`. Useful series:
   `aurora_http_requests_total` and `aurora_http_request_duration_seconds` (by route template, summed across all uvicorn
@@ -179,7 +182,8 @@ Never put secrets in `NEXT_PUBLIC_*` variables: the frontend has no such variabl
   are only counted. Figures produced by the worker are
   read from Postgres and Redis at scrape time (cached 15 s), so they are right whichever process did the work:
   `aurora_forecast_jobs_total{kind,status}`, `aurora_jobs_in_progress{kind}`, `aurora_forecasts_total{method}`,
-  `aurora_training_duration_seconds`, `aurora_active_alerts_total`, `aurora_queue_depth{queue}`. Being derived from
+  `aurora_training_duration_seconds`, `aurora_active_alerts_total`, `aurora_queue_depth{queue}`, plus the job,
+  webhook and assistant health gauges listed in `docs/OBSERVABILITY.md`. Being derived from
   stored rows, the totals drop if old rows are deleted; alert on rates over short windows.
 - Logs are JSON on stdout with a `request_id`, which is also returned in the `X-Request-ID` header and in error bodies.
 - In-app: *System & integrations* shows queue, job and component status; *Audit log* shows security-relevant actions.
