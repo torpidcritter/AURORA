@@ -350,6 +350,13 @@ test.describe.serial("Aurora end to end", () => {
   });
 
   test("an assistant proposal changes nothing until decided", async () => {
+    // The proposal needs open alerts. A fresh database has none until monitoring runs, so run it on the worker and
+    // wait for the first alert instead of relying on alerts left over from earlier runs.
+    await page.goto("/models");
+    await page.getByRole("button", { name: "Run monitoring now" }).click();
+    await expect
+      .poll(async () => ((await (await page.request.get("/api/proxy/alerts/summary")).json()) as { open: number }).open, { timeout: 60_000 })
+      .toBeGreaterThan(0);
     await page.goto("/assistant");
     await page.getByLabel("Message").fill("Please acknowledge the open alerts");
     await page.getByRole("button", { name: "Send" }).click();
