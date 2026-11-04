@@ -447,11 +447,11 @@ test.describe.serial("Aurora end to end", () => {
 
   test("theme, keyboard shortcuts and phone-width layout", async () => {
     await page.goto("/dashboard");
-    await page.getByRole("button", { name: /Theme: Dark/ }).click();
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await page.getByRole("button", { name: /Theme: Light/ }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await page.reload();
     // The boot script applies the saved theme before React loads.
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 
     await page.locator("body").press("?");
     await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();

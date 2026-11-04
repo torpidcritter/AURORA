@@ -678,3 +678,23 @@ The spec names files that do not exist here; the responsibilities live in these 
   the person asks for them to be removed too.
 - Tested against fake servers only (`httpx.MockTransport`); no real WooCommerce store has been connected. Not done:
   SFTP and cloud-storage buckets, Square, Lightspeed and other POS systems, and pushing stock levels back to stores.
+
+## ADR-051 Ledger visual style, with Night shift as the dark theme
+- The owner asked for an interface that looks like a proper ERP system rather than one with "various colors", and
+  that does not look AI generated. Eight options were previewed on the same screen (published style previews); the
+  owner chose Ledger for light and Night shift for dark.
+- Ledger replaces the earlier dark "glass" look (translucent panels, blur, glows, sky and violet accents, background
+  gradients). Panels are now solid with one hairline border and 2-4 px corners, no shadows except on overlays.
+  Table headings and card labels are small uppercase monospace with a double rule under the heading row; KPI
+  figures are monospace. Light is the default theme; existing choices saved in a browser are kept.
+- The change is made through the existing colour tokens (`--color-*` in `app/globals.css`), Tailwind radius tokens and
+  the shared components in `components/ui.tsx` and `AppShell.tsx`, so pages did not need per-page edits. Token names
+  stay the same; `--color-ai` now means copper for overrides, scenarios and training in charts, and the "ai" badge
+  and KPI tones render neutral so colour stays reserved for actions and stock status.
+- Fonts (Instrument Sans, Spline Sans Mono) are self-hosted from `@fontsource-variable` packages because the
+  Content-Security-Policy allows fonts only from the app itself; they are OFL-licensed.
+- Accessibility: every text token is at least 4.5:1 on every surface in both themes (checked by script), and the
+  chart trio (grey, navy, copper) passes the dataviz palette validator for colour-vision deficiency in both themes.
+  The neutral grey for actual sales fails that validator's chroma check by design: actuals are not a category.
+- Not done: user-selectable accent colours or per-organisation branding.
+

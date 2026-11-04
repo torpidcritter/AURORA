@@ -7,12 +7,13 @@
 
 export type Theme = "dark" | "light" | "system";
 export const THEMES: { value: Theme; label: string }[] = [
-  { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
   { value: "system", label: "Match system" },
 ];
 export const THEME_KEY = "aurora.theme";
-export const DEFAULT_THEME: Theme = "dark";
+// Ledger, the light theme, is the default look (ADR-051); Night shift is the dark theme.
+export const DEFAULT_THEME: Theme = "light";
 
 /** Locales offered for numbers and dates. The interface text itself is English only (see docs/UX.md). */
 export const LOCALES: { value: string; label: string }[] = [
@@ -66,7 +67,7 @@ export function applyTheme(t: Theme): void {
   const root = document.documentElement;
   root.dataset.theme = t;
   const light = resolvedTheme(t, window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false) === "light";
-  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", light ? "#f5f7fb" : "#070a12");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", light ? "#ffffff" : "#12161c");
 }
 
 export const THEME_EVENT = "aurora:theme-changed";

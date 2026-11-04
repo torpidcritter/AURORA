@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 
 import { THEME_BOOT_SCRIPT } from "@/lib/preferences";
 
+import "@fontsource-variable/instrument-sans/wght.css";
+import "@fontsource-variable/spline-sans-mono/wght.css";
+
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,7 +13,7 @@ export const metadata: Metadata = {
   description: "Demand forecasting and inventory intelligence",
 };
 
-export const viewport: Viewport = { themeColor: "#070a12", width: "device-width", initialScale: 1 };
+export const viewport: Viewport = { themeColor: "#ffffff", width: "device-width", initialScale: 1 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

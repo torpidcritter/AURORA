@@ -69,7 +69,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="glass space-y-4 rounded-xl border border-glass-line p-6 shadow-glass">
+    <form onSubmit={onSubmit} noValidate className="space-y-4 rounded-sm border border-line bg-surface p-6">
       <div>
         <h1 className="text-lg font-semibold">Sign in</h1>
         <p className="mt-1 text-sm text-muted">Use the account your administrator created for you.</p>

@@ -27,7 +27,7 @@ import { GO_SHORTCUTS, SEQUENCE_MS, isTypingTarget, shortcutFor } from "@/lib/sh
 import type { Alert, Page } from "@/lib/types";
 
 const THEME_ICON = { dark: Moon, light: Sun, system: Monitor } as const;
-const NEXT_THEME: Record<Theme, Theme> = { dark: "light", light: "system", system: "dark" };
+const NEXT_THEME: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
 
 // Saved preferences are read with useSyncExternalStore: the server render and hydration use the defaults, then the
 // saved value, with no setState-in-effect round trip.
@@ -59,7 +59,7 @@ const useLocale = () => useSyncExternalStore(noopSubscribe, readLocale, () => DE
 const useNotifyOn = () => useSyncExternalStore(subscribeNotify, readNotify, () => false);
 const useNotifySupport = () => useSyncExternalStore(subscribeNotify, notifySupport, (): NotifySupport => "unsupported");
 
-/** Header button that cycles dark → light → match system. The account page has the same choice as a list. */
+/** Header button that cycles light → dark → match system. The account page has the same choice as a list. */
 export function ThemeToggle() {
   const theme = useTheme();
   const Icon = THEME_ICON[theme];
@@ -68,7 +68,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => saveTheme(NEXT_THEME[theme])}
-      className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-ink"
+      className="rounded-sm p-1.5 text-muted hover:bg-hover hover:text-ink"
       aria-label={`Theme: ${label}. Change theme`}
       title={`Theme: ${label}`}
     >
@@ -132,8 +132,8 @@ export function KeyboardShortcuts() {
   if (!help) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60" onClick={() => setHelp(false)} aria-hidden />
-      <div role="dialog" aria-modal="true" aria-labelledby="kbd-title" className="glass-strong relative w-full max-w-md rounded-xl border border-line p-5">
+      <div className="absolute inset-0 bg-[#0e1116]/50" onClick={() => setHelp(false)} aria-hidden />
+      <div role="dialog" aria-modal="true" aria-labelledby="kbd-title" className="bg-surface relative w-full max-w-md rounded-sm border border-line-strong p-5 shadow-lg">
         <div className="mb-3 flex items-center justify-between">
           <h2 id="kbd-title" className="flex items-center gap-2 text-base font-semibold text-ink">
             <Keyboard className="h-4 w-4" aria-hidden /> Keyboard shortcuts

@@ -147,8 +147,8 @@ function Bubble({ m }: { m: ChatMsg }) {
       <div
         className={
           m.role === "user"
-            ? "max-w-[85%] rounded-xl bg-primary/15 px-4 py-2 text-sm text-ink"
-            : "max-w-[90%] rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-ink"
+            ? "max-w-[85%] rounded-sm border border-primary/20 bg-hover px-4 py-2 text-sm text-ink"
+            : "max-w-[90%] rounded-sm border border-line bg-surface px-4 py-3 text-sm text-ink"
         }
       >
         <div className="whitespace-pre-wrap break-words">{m.content}</div>

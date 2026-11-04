@@ -4,7 +4,17 @@ Everything here is saved in the browser (Account → Display and notifications),
 keeps its own choice. See ADR-049 for the reasoning.
 
 ## Theme
-Dark (default), Light, or Match system. Change it with the sun or moon button in the top bar or on the account page.
+Light (default), Dark, or Match system. Change it with the sun or moon button in the top bar or on the account page.
+
+The look is "Ledger" (ADR-051): white paper, ink-navy text and buttons, small square corners, double rules under
+table headings, and figures in a monospace (Spline Sans Mono) so columns line up; body text is Instrument Sans. The
+dark theme, "Night shift", keeps the same layout with blue-black surfaces and steel-blue actions. Both fonts are
+bundled with the app (no request to a font service), under the SIL Open Font License.
+
+Colour has two jobs: the main action (navy, or steel blue in dark) and stock that needs attention (oxblood critical,
+burnt orange high, ochre medium, green low). Status always comes with a word or a marker shape, never colour alone.
+Charts use grey for actual sales, navy for forecasts and copper for overrides, scenarios and model training; that
+trio passes the colour-vision check in both themes. PDF reports use the same ink colours and double rule.
 
 ## Keyboard shortcuts
 Press `?` anywhere to see them. They are off while you type in a field.

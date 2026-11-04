@@ -86,7 +86,7 @@ export function AcceptInviteForm() {
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-line bg-surface/80 p-6">
+    <div className="space-y-4 rounded-sm border border-line bg-surface p-6">
       <h1 className="text-lg font-semibold">Join your team on Aurora</h1>
       {error && <Notice tone="bad">{error}</Notice>}
       {state.phase === "reading" && <p className="text-sm text-muted">Checking your invitation…</p>}

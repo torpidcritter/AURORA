@@ -71,7 +71,7 @@ export function ResetPasswordForm() {
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-line bg-surface/80 p-6">
+    <div className="space-y-4 rounded-sm border border-line bg-surface p-6">
       <div>
         <h1 className="text-lg font-semibold">Choose a new password</h1>
         <p className="mt-1 text-sm text-muted">Setting a new password signs your account out everywhere.</p>

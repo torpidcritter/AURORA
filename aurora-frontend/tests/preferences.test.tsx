@@ -48,10 +48,11 @@ const alert = (o: Partial<Alert>): Alert => ({
 });
 
 describe("theme", () => {
-  it("defaults to dark and ignores unknown stored values", () => {
+  it("defaults to light (Ledger) and ignores unknown stored values", () => {
     expect(readTheme()).toBe(DEFAULT_THEME);
+    expect(DEFAULT_THEME).toBe("light");
     window.localStorage.setItem(THEME_KEY, "neon");
-    expect(readTheme()).toBe("dark");
+    expect(readTheme()).toBe("light");
   });
 
   it("resolves match-system through the operating system setting", () => {
@@ -61,23 +62,25 @@ describe("theme", () => {
   });
 
   it("boot script applies the saved theme before React and survives bad values", () => {
-    window.localStorage.setItem(THEME_KEY, "light");
-    new Function(THEME_BOOT_SCRIPT)();
-    expect(document.documentElement.dataset.theme).toBe("light");
-    window.localStorage.setItem(THEME_KEY, "<script>");
+    window.localStorage.setItem(THEME_KEY, "dark");
     new Function(THEME_BOOT_SCRIPT)();
     expect(document.documentElement.dataset.theme).toBe("dark");
+    window.localStorage.setItem(THEME_KEY, "<script>");
+    new Function(THEME_BOOT_SCRIPT)();
+    expect(document.documentElement.dataset.theme).toBe("light");
   });
 
-  it("header toggle cycles dark, light, match system and saves the choice", () => {
+  it("header toggle cycles light, dark, match system and saves the choice", () => {
     render(<ThemeToggle />);
-    const btn = screen.getByRole("button", { name: /Theme: Dark/ });
+    const btn = screen.getByRole("button", { name: /Theme: Light/ });
     fireEvent.click(btn);
-    expect(window.localStorage.getItem(THEME_KEY)).toBe("light");
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(screen.getByRole("button", { name: /Theme: Light/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Theme: Light/ }));
+    expect(window.localStorage.getItem(THEME_KEY)).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(screen.getByRole("button", { name: /Theme: Dark/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Theme: Dark/ }));
     expect(screen.getByRole("button", { name: /Theme: Match system/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Theme: Match system/ }));
+    expect(screen.getByRole("button", { name: /Theme: Light/ })).toBeInTheDocument();
   });
 
   it("stays in step with a change made elsewhere", () => {

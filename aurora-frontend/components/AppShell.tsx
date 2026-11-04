@@ -147,14 +147,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const nav = (
-    <nav aria-label="Main" className="flex flex-col gap-5 px-3 py-4">
+    <nav aria-label="Main" className="flex flex-col gap-4 py-3">
       {NAV.map((g) => {
         const items = g.items.filter((i) => !i.perm || can(i.perm));
         if (!items.length) return null;
         return (
           <div key={g.section}>
-            <div className="px-2 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-faint">{g.section}</div>
-            <ul className="space-y-0.5">
+            <div className="ledger-label px-5 pb-1 text-faint">{g.section}</div>
+            <ul>
               {items.map((i) => {
                 const active = pathname === i.href || pathname.startsWith(`${i.href}/`);
                 const Icon = i.icon;
@@ -165,14 +165,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
                       className={clsx(
-                        "flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm",
-                        active ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface-2 hover:text-ink",
+                        "flex items-center gap-2.5 px-5 py-1.5 text-sm",
+                        active ? "bg-hover font-semibold text-ink shadow-[inset_3px_0_0_var(--color-primary)]" : "text-muted hover:bg-hover hover:text-ink",
                       )}
                     >
-                      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                      <Icon className={clsx("h-4 w-4 shrink-0", active ? "text-primary" : "text-faint")} strokeWidth={1.75} aria-hidden />
                       <span className="flex-1">{i.label}</span>
                       {i.href === "/alerts" && summary && summary.open > 0 && (
-                        <span className="tabular rounded-full bg-bad/20 px-1.5 text-xs text-bad" aria-label={`${summary.open} open alerts`}>
+                        <span className="font-mono text-[11px] font-medium text-bad" aria-label={`${summary.open} open alerts`}>
                           {summary.open}
                         </span>
                       )}
@@ -193,14 +193,14 @@ export function AppShell({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-1 focus:text-on-accent">
           Skip to content
         </a>
-        <aside className="glass sticky top-0 hidden h-screen overflow-y-auto border-r border-glass-line lg:block">
+        <aside className="sticky top-0 hidden h-screen overflow-y-auto border-r border-line bg-nav lg:block">
           <Brand />
           {nav}
         </aside>
         {open && (
           <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-            <div className="absolute inset-0 bg-black/60" onClick={() => setOpen(false)} />
-            <aside className="glass-strong absolute inset-y-0 left-0 w-72 overflow-y-auto border-r border-line">
+            <div className="absolute inset-0 bg-[#0e1116]/50" onClick={() => setOpen(false)} />
+            <aside className="absolute inset-y-0 left-0 w-72 overflow-y-auto border-r border-line bg-nav">
               <div className="flex items-center justify-between pr-3">
                 <Brand />
                 <button type="button" onClick={() => setOpen(false)} className="rounded p-2 text-muted hover:text-ink" aria-label="Close navigation">
@@ -212,7 +212,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         )}
         <div className="min-w-0">
-          <header className="glass-strong sticky top-0 z-30 flex items-center gap-3 border-b border-glass-line px-4 py-2.5 sm:px-6">
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
             <button type="button" className="rounded p-1.5 text-muted hover:text-ink lg:hidden" onClick={() => setOpen(true)} aria-label="Open navigation">
               <Menu className="h-5 w-5" />
             </button>
@@ -221,8 +221,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div className="flex items-center gap-2 text-sm sm:gap-3">
                 <ThemeToggle />
                 <Link href="/account" className="hidden text-muted hover:text-ink hover:underline sm:inline" title="Account and security">{me.email}</Link>
-                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs capitalize text-ink ring-1 ring-line">{me.role}</span>
-                <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-muted hover:bg-surface-2 hover:text-ink">
+                <span className="ledger-label rounded-sm border border-line-strong px-1.5 py-px">{me.role}</span>
+                <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 rounded-sm px-2 py-1 text-muted hover:bg-hover hover:text-ink">
                   <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Sign out</span>
                 </button>
               </div>
@@ -244,9 +244,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function Brand() {
   return (
-    <Link href="/dashboard" className="flex items-center gap-2 px-5 py-4">
-      <span className="h-6 w-6 rounded-md bg-gradient-to-br from-primary to-ai" aria-hidden />
-      <span className="text-base font-semibold tracking-tight text-ink">Aurora</span>
+    <Link href="/dashboard" className="flex h-14 items-center gap-2.5 border-b border-line px-5">
+      <span className="h-3.5 w-3.5 bg-primary" aria-hidden />
+      <span className="text-[15px] font-semibold tracking-wide text-ink">Aurora</span>
     </Link>
   );
 }

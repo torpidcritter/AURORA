@@ -24,14 +24,15 @@ import { fmt1, fmtPct, fmtShortDate } from "@/lib/format";
 import type { AdjustedPoint, ForecastPoint, HistoryPoint, Recommendation } from "@/lib/types";
 
 /**
- * Colour roles from the design system (spec 9.2). A colour always means the same thing on every chart:
- *   - observed demand (actuals): neutral slate, solid line
- *   - forecasts and primary indicators: sky #38bdf8
- *   - scenarios, ML training and AI: violet #a78bfa
- *   - status: emerald healthy/low, amber warning/medium, orange high, rose critical
- * Sky and violet are hard to tell apart with deuteranopia (OKLab ΔE ≈ 5), and amber/orange are close for everyone, so
- * series never rely on colour alone: forecasts and scenarios are dashed, risk levels have their own marker shape, and
- * every multi-series chart has a legend, labelled tooltips and a data-table view.
+ * Colour roles (Ledger / Night shift, ADR-051). A colour always means the same thing on every chart:
+ *   - observed demand (actuals): neutral grey, solid line
+ *   - forecasts and primary indicators: ink navy (steel blue in the dark theme)
+ *   - planner overrides, scenarios and model training: copper
+ *   - status: green low, ochre medium, burnt orange high, oxblood critical
+ * Navy, copper and grey pass the dataviz palette validator for colour-vision deficiency in both themes (worst pair
+ * ΔE ≥ 13). Ochre and orange are still close, so series never rely on colour alone: forecasts and scenarios are
+ * dashed, risk levels have their own marker shape, and every multi-series chart has a legend, labelled tooltips and
+ * a data-table view.
  */
 export const ROLE = {
   actual: "var(--color-chart-actual)",
@@ -56,12 +57,12 @@ const LEGEND_STYLE = { fontSize: 12, color: "var(--color-muted)" } as const;
 
 function TooltipBox({ title, rows }: { title: string; rows: { label: string; value: string; color?: string }[] }) {
   return (
-    <div className="glass-strong rounded-lg border border-line px-3 py-2 text-xs shadow-xl">
+    <div className="rounded-sm border border-line-strong bg-surface px-3 py-2 text-xs shadow-md">
       <div className="mb-1 font-medium text-ink">{title}</div>
       {rows.map((r) => (
         <div key={r.label} className="flex items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-muted">
-            {r.color && <span className="h-2 w-2 rounded-full" style={{ background: r.color }} aria-hidden />}
+            {r.color && <span className="h-2 w-2" style={{ background: r.color }} aria-hidden />}
             {r.label}
           </span>
           <span className="tabular text-ink">{r.value}</span>
@@ -77,7 +78,7 @@ export function ChartFrame({ label, height = 280, table, children }: { label: st
   return (
     <figure aria-label={label}>
       {showTable ? (
-        <div className="max-h-[320px] overflow-auto rounded-lg border border-line">{table}</div>
+        <div className="max-h-[320px] overflow-auto rounded-sm border border-line">{table}</div>
       ) : (
         <div style={{ height }} className="w-full">
           {children}
@@ -95,10 +96,10 @@ export function ChartFrame({ label, height = 280, table, children }: { label: st
 function SimpleTable({ cols, rows }: { cols: string[]; rows: (string | number)[][] }) {
   return (
     <table className="w-full text-xs">
-      <thead className="sticky top-0 bg-surface">
+      <thead className="sticky top-0 bg-surface-2">
         <tr>
           {cols.map((c) => (
-            <th key={c} scope="col" className="px-2 py-1.5 text-left font-medium text-muted">
+            <th key={c} scope="col" className="ledger-label border-b-[3px] border-double border-rule px-2 py-1.5 text-left">
               {c}
             </th>
           ))}
@@ -108,7 +109,7 @@ function SimpleTable({ cols, rows }: { cols: string[]; rows: (string | number)[]
         {rows.map((r, i) => (
           <tr key={i} className="border-t border-line/50">
             {r.map((v, j) => (
-              <td key={j} className="tabular px-2 py-1">
+              <td key={j} className="tabular px-2 py-1 font-mono">
                 {v}
               </td>
             ))}
@@ -192,7 +193,7 @@ export function DemandForecastChart({
             }}
           />
           <Legend wrapperStyle={LEGEND_STYLE} />
-          {splitDate && <ReferenceLine x={splitDate} stroke="var(--color-faint)" strokeDasharray="3 3" label={{ value: "Forecast starts", position: "insideTopLeft", fill: "#94a3b8", fontSize: 11 }} />}
+          {splitDate && <ReferenceLine x={splitDate} stroke="var(--color-faint)" strokeDasharray="3 3" label={{ value: "Forecast starts", position: "insideTopLeft", fill: "var(--color-muted)", fontSize: 11 }} />}
           <Area dataKey="band" name={covLabel} stroke="none" fill={ROLE.forecast} fillOpacity={0.16} isAnimationActive={false} legendType="square" />
           <Line legendType="plainline" dataKey="actual" name="Actual" stroke={ROLE.actual} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
           <Line legendType="plainline" dataKey="forecast" name="Forecast" stroke={ROLE.forecast} strokeWidth={2} strokeDasharray={DASH.forecast} dot={false} isAnimationActive={false} connectNulls />
@@ -274,7 +275,7 @@ export function RiskScatter({ rows, onSelect }: { rows: Recommendation[]; onSele
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 8, right: 16, bottom: 16, left: -4 }}>
           <CartesianGrid stroke="var(--color-line)" />
-          <XAxis type="number" dataKey="x" name="Days of stock" domain={[0, CAP]} {...AXIS} label={{ value: `Days until stockout (capped at ${CAP})`, position: "insideBottom", offset: -8, fill: "#94a3b8", fontSize: 11 }} />
+          <XAxis type="number" dataKey="x" name="Days of stock" domain={[0, CAP]} {...AXIS} label={{ value: `Days until stockout (capped at ${CAP})`, position: "insideBottom", offset: -8, fill: "var(--color-muted)", fontSize: 11 }} />
           <YAxis type="number" dataKey="y" name="P(stockout)" domain={[0, 100]} unit="%" {...AXIS} width={48} />
           <ZAxis range={[70, 70]} />
           <Tooltip

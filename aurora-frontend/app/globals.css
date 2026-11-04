@@ -1,135 +1,109 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #070a12;
-  --color-surface: #0c111c;
-  --color-surface-2: #121a2a;
-  --color-line: rgba(148, 163, 184, 0.14);
-  /* Hairline border for glass surfaces (spec 9.2). */
-  --color-glass-line: rgba(148, 163, 184, 0.08);
-  --color-ink: #e6ebf3;
-  --color-muted: #94a3b8;
-  /* At least 4.9:1 on every surface, including surface-2 and the glass composite (WCAG AA for small text). */
-  --color-faint: #7c8aa1;
-  --color-primary: #38bdf8;
-  --color-ok: #34d399;
-  --color-warn: #fbbf24;
-  --color-bad: #fb7185;
-  --color-ai: #a78bfa;
-  /* Row hover and other faint fills; text on accent-coloured buttons. */
-  --color-hover: rgba(255, 255, 255, 0.05);
-  --color-on-accent: #020617;
-  /* Chart series (also used as SVG strokes through var()). */
-  --color-chart-actual: #cbd5e1;
-  --color-chart-soft: #ddd6fe;
-  --color-chart-high: #fb923c;
-  --shadow-glass: 0 0 0 1px rgba(56, 189, 248, 0.02), 0 16px 40px -20px rgba(56, 189, 248, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-/* Light theme (ADR-049): chosen in the account menu, or "match system" with a light system setting. The same
-   tokens as the dark theme, so components need no theme-specific classes. */
-:root[data-theme="light"] {
-  color-scheme: light;
-  --color-bg: #f5f7fb;
+  /* Ledger (ADR-051): the light theme and the default. Ruled-ledger look: white paper, ink-navy text and actions,
+     double rules under table headings and above totals, figures in a monospace. Colour has two jobs only: the main
+     action (navy) and stock that needs attention (oxblood, ochre). Night shift below is the dark theme. */
+  --color-bg: #f6f7f5;
   --color-surface: #ffffff;
-  --color-surface-2: #eef2f7;
-  --color-line: rgba(15, 23, 42, 0.13);
-  --color-glass-line: rgba(15, 23, 42, 0.08);
-  --color-ink: #0f172a;
-  --color-muted: #475569;
-  /* At least 4.5:1 on white and on surface-2. */
-  --color-faint: #56657c;
-  --color-primary: #0369a1;
-  --color-ok: #047857;
-  --color-warn: #b45309;
-  --color-bad: #be123c;
-  --color-ai: #6d28d9;
-  --color-hover: rgba(15, 23, 42, 0.04);
+  --color-surface-2: #f2f4f2;
+  --color-line: #dfe4e8;
+  /* Stronger lines: control borders, tag outlines and the double rules. */
+  --color-line-strong: #c9cfd6;
+  --color-rule: #9aa6b6;
+  --color-ink: #18233a;
+  --color-muted: #56627a;
+  /* At least 4.5:1 on every surface, including surface-2 (WCAG AA for small text). */
+  --color-faint: #646f82;
+  --color-primary: #23395d;
+  --color-ok: #2f6b4f;
+  --color-warn: #86600f;
+  --color-bad: #8f2d2a;
+  /* Planner overrides, scenarios and model training in charts: copper, told apart from navy and grey even with
+     colour-vision deficiency (checked with the dataviz palette validator). */
+  --color-ai: #a0522d;
+  /* Row hover, the selected menu item and other faint fills; text on navy buttons. */
+  --color-hover: #eef2f8;
   --color-on-accent: #ffffff;
-  --color-chart-actual: #475569;
-  --color-chart-soft: #7c3aed;
-  --color-chart-high: #c2410c;
-  --shadow-glass: 0 0 0 1px rgba(15, 23, 42, 0.03), 0 12px 32px -20px rgba(15, 23, 42, 0.25);
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-strong: rgba(255, 255, 255, 0.94);
-  --glass-bg-solid: #ffffff;
+  --color-nav: #ffffff;
+  /* Chart series (also used as SVG strokes through var()). */
+  --color-chart-actual: #7b8494;
+  --color-chart-soft: #c48a68;
+  --color-chart-high: #a84d14;
+  /* Small radii: business software, not rounded cards. rounded-full stays round (avatars, switches). */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "Spline Sans Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: light) {
-  :root[data-theme="system"] {
-    color-scheme: light;
-    --color-bg: #f5f7fb;
-    --color-surface: #ffffff;
-    --color-surface-2: #eef2f7;
-    --color-line: rgba(15, 23, 42, 0.13);
-    --color-glass-line: rgba(15, 23, 42, 0.08);
-    --color-ink: #0f172a;
-    --color-muted: #475569;
-    /* At least 4.5:1 on white and on surface-2. */
-    --color-faint: #56657c;
-    --color-primary: #0369a1;
-    --color-ok: #047857;
-    --color-warn: #b45309;
-    --color-bad: #be123c;
-    --color-ai: #6d28d9;
-    --color-hover: rgba(15, 23, 42, 0.04);
-    --color-on-accent: #ffffff;
-    --color-chart-actual: #475569;
-    --color-chart-soft: #7c3aed;
-    --color-chart-high: #c2410c;
-    --shadow-glass: 0 0 0 1px rgba(15, 23, 42, 0.03), 0 12px 32px -20px rgba(15, 23, 42, 0.25);
-    --glass-bg: rgba(255, 255, 255, 0.72);
-    --glass-bg-strong: rgba(255, 255, 255, 0.94);
-    --glass-bg-solid: #ffffff;
-  }
-}
-
+/* Night shift: the dark theme. Chosen in the header toggle or the account page, or "match system" with a dark
+   system setting. Same token names, so components need no theme-specific classes. */
 :root {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
-  /* Glass surfaces (spec 9.2): translucent dark fill + 16px backdrop blur. */
-  --glass-bg: rgba(10, 14, 23, 0.58);
-  /* Overlays that sit on top of page content (sticky header, drawers, dialogs, the assistant panel, tooltips) stay
-     nearly opaque so text behind them cannot lower the contrast of their own text. */
-  --glass-bg-strong: rgba(10, 14, 23, 0.9);
-  /* Solid fallback when backdrop-filter is unsupported or the user prefers reduced transparency. */
-  --glass-bg-solid: #0c111c;
-  --glass-blur: 16px;
+  --color-bg: #12161c;
+  --color-surface: #181d24;
+  --color-surface-2: #1e242c;
+  --color-line: #29303a;
+  --color-line-strong: #39424e;
+  --color-rule: #4a5562;
+  --color-ink: #e2e6eb;
+  --color-muted: #a3acb7;
+  --color-faint: #8d96a2;
+  --color-primary: #7fa7d9;
+  --color-ok: #7cc49a;
+  --color-warn: #e0a84a;
+  --color-bad: #ef8b7f;
+  --color-ai: #e0956a;
+  --color-hover: #1f2731;
+  --color-on-accent: #0c1016;
+  --color-nav: #0e1116;
+  --color-chart-actual: #d5d9de;
+  --color-chart-soft: #f0c2a4;
+  --color-chart-high: #ec9c5a;
 }
 
-/* Translucent card surface. Pair with `border border-glass-line shadow-glass`. */
-@utility glass {
-  background-color: var(--glass-bg-solid);
-
-  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    background-color: var(--glass-bg);
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    backdrop-filter: blur(var(--glass-blur));
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    background-color: var(--glass-bg-solid);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --color-bg: #12161c;
+    --color-surface: #181d24;
+    --color-surface-2: #1e242c;
+    --color-line: #29303a;
+    --color-line-strong: #39424e;
+    --color-rule: #4a5562;
+    --color-ink: #e2e6eb;
+    --color-muted: #a3acb7;
+    --color-faint: #8d96a2;
+    --color-primary: #7fa7d9;
+    --color-ok: #7cc49a;
+    --color-warn: #e0a84a;
+    --color-bad: #ef8b7f;
+    --color-ai: #e0956a;
+    --color-hover: #1f2731;
+    --color-on-accent: #0c1016;
+    --color-nav: #0e1116;
+    --color-chart-actual: #d5d9de;
+    --color-chart-soft: #f0c2a4;
+    --color-chart-high: #ec9c5a;
   }
 }
 
-/* Glass for overlays on top of page content. */
-@utility glass-strong {
-  background-color: var(--glass-bg-solid);
-
-  @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-    background-color: var(--glass-bg-strong);
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    backdrop-filter: blur(var(--glass-blur));
-  }
-
-  @media (prefers-reduced-transparency: reduce) {
-    background-color: var(--glass-bg-solid);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
+/* Small uppercase monospace label used for card titles, KPI labels and table headings (the ledger "column head"). */
+@utility ledger-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
 }
 
 html,
@@ -140,9 +114,6 @@ body {
 }
 
 body {
-  background-image: radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--color-primary) 6%, transparent), transparent 60%),
-    radial-gradient(900px 500px at 110% 10%, color-mix(in srgb, var(--color-ai) 5%, transparent), transparent 60%);
-  background-attachment: fixed;
   min-height: 100vh;
 }
 
@@ -168,4 +139,15 @@ body {
   .grid > * {
     min-width: 0;
   }
+}
+
+/* Chart axis figures use the ledger monospace, like table figures. */
+.recharts-cartesian-axis-tick text {
+  font-family: var(--font-mono);
+}
+
+/* The first column of a table is its identifier (SKU, number, name): keep it on one line, as in a stock book. Wide
+   tables scroll inside their own box (see Table in components/ui.tsx). */
+table td:first-child {
+  white-space: nowrap;
 }

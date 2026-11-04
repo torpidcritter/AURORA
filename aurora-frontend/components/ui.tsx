@@ -25,11 +25,11 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={clsx(
-        "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        variant === "primary" && "bg-primary text-on-accent hover:bg-primary/85",
-        variant === "secondary" && "border border-line bg-surface-2 text-ink hover:bg-hover",
-        variant === "danger" && "bg-bad/90 text-on-accent hover:bg-bad",
-        variant === "ghost" && "text-muted hover:bg-surface-2 hover:text-ink",
+        "inline-flex min-h-8 items-center justify-center gap-2 rounded-sm border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        variant === "primary" && "border-primary bg-primary font-semibold text-on-accent hover:bg-primary/90",
+        variant === "secondary" && "border-line-strong bg-surface text-ink hover:bg-hover",
+        variant === "danger" && "border-bad bg-bad font-semibold text-on-accent hover:bg-bad/90",
+        variant === "ghost" && "border-transparent text-primary hover:bg-hover",
         className,
       )}
     >
@@ -39,9 +39,8 @@ export function Button({
   );
 }
 
-/** Shared glass surface (spec 9.2): translucent fill, 16px backdrop blur, hairline border and a faint glow. Solid when
- *  backdrop-filter is unsupported or the user prefers reduced transparency (see `glass` in app/globals.css). */
-export const SURFACE = "glass rounded-xl border border-glass-line shadow-glass";
+/** Shared panel surface (Ledger, ADR-051): solid paper, one hairline border, a small radius and no shadow. */
+export const SURFACE = "rounded-sm border border-line bg-surface";
 
 export function Card({ title, actions, children, className, subtitle }: { title?: ReactNode; subtitle?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -49,8 +48,8 @@ export function Card({ title, actions, children, className, subtitle }: { title?
       {(title || actions) && (
         <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
-            {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+            {title && <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>}
+            {subtitle && <p className="mt-0.5 max-w-3xl text-xs text-muted">{subtitle}</p>}
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
@@ -64,7 +63,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">{title}</h1>
+        <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-[22px]">{title}</h1>
         {description && <p className="mt-1 max-w-3xl text-sm text-muted">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -75,14 +74,14 @@ export function PageHeader({ title, description, actions }: { title: string; des
 export function Stat({ label, value, hint, tone = "default", title }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "default" | "ok" | "warn" | "bad" | "ai"; title?: string }) {
   return (
     <div className={clsx(SURFACE, "p-4")} title={title}>
-      <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
+      <div className="ledger-label">{label}</div>
       <div
         className={clsx(
-          "tabular mt-2 text-2xl font-semibold",
+          "tabular mt-2 font-mono text-[22px] font-medium tracking-tight",
           tone === "ok" && "text-ok",
           tone === "warn" && "text-warn",
           tone === "bad" && "text-bad",
-          tone === "ai" && "text-ai",
+          tone === "ai" && "text-ink",
         )}
       >
         {value}
@@ -92,17 +91,18 @@ export function Stat({ label, value, hint, tone = "default", title }: { label: s
   );
 }
 
+// Ledger status mark: a small square in the status colour beside the word, never colour alone. Critical is also bold.
 const RISK_STYLE: Record<string, string> = {
-  critical: "bg-bad/15 text-bad ring-bad/30",
-  high: "bg-chart-high/15 text-chart-high ring-chart-high/30",
-  medium: "bg-warn/15 text-warn ring-warn/30",
-  low: "bg-ok/15 text-ok ring-ok/30",
-  unknown: "bg-muted/15 text-muted ring-muted/30",
+  critical: "text-bad font-semibold before:bg-bad",
+  high: "text-chart-high before:bg-chart-high",
+  medium: "text-warn before:bg-warn",
+  low: "text-ok before:bg-ok",
+  unknown: "text-muted before:bg-line-strong",
 };
 
 export function RiskBadge({ level }: { level: RiskLevel | Severity | string }) {
   return (
-    <span className={clsx("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset", RISK_STYLE[level] ?? RISK_STYLE.unknown)}>
+    <span className={clsx("inline-flex items-center gap-1.5 text-xs font-medium capitalize before:h-2 before:w-2 before:shrink-0 before:content-['']", RISK_STYLE[level] ?? RISK_STYLE.unknown)}>
       {level}
     </span>
   );
@@ -112,13 +112,13 @@ export function Badge({ children, tone = "default" }: { children: ReactNode; ton
   return (
     <span
       className={clsx(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
-        tone === "default" && "bg-muted/15 text-muted ring-muted/25",
-        tone === "ok" && "bg-ok/15 text-ok ring-ok/30",
-        tone === "warn" && "bg-warn/15 text-warn ring-warn/30",
-        tone === "bad" && "bg-bad/15 text-bad ring-bad/30",
-        tone === "ai" && "bg-ai/15 text-ai ring-ai/30",
-        tone === "info" && "bg-primary/15 text-primary ring-primary/30",
+        "inline-flex items-center gap-1 rounded-sm border px-1.5 py-px text-xs font-medium",
+        tone === "default" && "border-line-strong bg-surface-2 text-muted",
+        tone === "ok" && "border-ok/35 bg-ok/8 text-ok",
+        tone === "warn" && "border-warn/35 bg-warn/8 text-warn",
+        tone === "bad" && "border-bad/35 bg-bad/8 text-bad",
+        tone === "ai" && "border-line-strong bg-surface text-ink",
+        tone === "info" && "border-primary/30 bg-primary/6 text-primary",
       )}
     >
       {children}
@@ -129,7 +129,7 @@ export function Badge({ children, tone = "default" }: { children: ReactNode; ton
 export function Field({ label, hint, error, children, htmlFor }: { label: string; hint?: ReactNode; error?: string | null; children: ReactNode; htmlFor?: string }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={htmlFor} className="text-xs font-medium text-muted">
+      <label htmlFor={htmlFor} className="text-xs font-medium text-ink/80">
         {label}
       </label>
       {children}
@@ -144,7 +144,7 @@ export function Field({ label, hint, error, children, htmlFor }: { label: string
 }
 
 const inputCls =
-  "rounded-lg border border-line bg-bg/60 px-3 py-2 text-sm text-ink placeholder:text-faint focus:border-primary focus:outline-none disabled:opacity-60";
+  "rounded-sm border border-line-strong bg-surface px-2.5 py-1.5 text-sm text-ink placeholder:text-faint focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:bg-surface-2 disabled:opacity-70";
 // Full width unless the caller sets a width (both utilities in one class list would leave the winner to CSS order).
 const width = (className?: string) => (/(^|\s)w-/.test(className ?? "") ? null : "w-full");
 
@@ -157,7 +157,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx("animate-pulse rounded-md bg-muted/15", className)} aria-hidden />;
+  return <div className={clsx("animate-pulse rounded-sm bg-surface-2", className)} aria-hidden />;
 }
 
 export function LoadingBlock({ rows = 3, label = "Loading" }: { rows?: number; label?: string }) {
@@ -172,7 +172,7 @@ export function LoadingBlock({ rows = 3, label = "Loading" }: { rows?: number; l
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-line px-6 py-10 text-center">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-sm border border-dashed border-line-strong px-6 py-10 text-center">
       <Inbox className="h-6 w-6 text-faint" aria-hidden />
       <p className="text-sm font-medium text-ink">{title}</p>
       {children && <div className="max-w-md text-sm text-muted">{children}</div>}
@@ -184,7 +184,7 @@ export function EmptyState({ title, children, action }: { title: string; childre
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const rid = (error as { requestId?: string | null } | null)?.requestId;
   return (
-    <div role="alert" className="flex flex-col items-start gap-2 rounded-lg border border-bad/30 bg-bad/10 p-4 text-sm">
+    <div role="alert" className="flex flex-col items-start gap-2 rounded-sm border border-bad/30 border-l-[3px] border-l-bad bg-bad/5 p-4 text-sm">
       <div className="flex items-center gap-2 font-medium text-bad">
         <AlertTriangle className="h-4 w-4" aria-hidden /> {errorMessage(error)}
       </div>
@@ -203,11 +203,11 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "ok" | "wa
     <div
       role={tone === "bad" ? "alert" : "status"}
       className={clsx(
-        "rounded-lg border px-3 py-2 text-sm",
-        tone === "info" && "border-primary/30 bg-primary/10 text-ink",
-        tone === "ok" && "border-ok/30 bg-ok/10 text-ink",
-        tone === "warn" && "border-warn/30 bg-warn/10 text-ink",
-        tone === "bad" && "border-bad/30 bg-bad/10 text-ink",
+        "rounded-sm border border-l-[3px] px-3 py-2 text-sm",
+        tone === "info" && "border-line border-l-primary bg-surface-2 text-ink",
+        tone === "ok" && "border-ok/25 border-l-ok bg-ok/5 text-ink",
+        tone === "warn" && "border-warn/25 border-l-warn bg-warn/5 text-ink",
+        tone === "bad" && "border-bad/25 border-l-bad bg-bad/5 text-ink",
       )}
     >
       {children}
@@ -219,8 +219,8 @@ export function ProgressBar({ value, label }: { value: number; label: string }) 
   const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
   return (
     <div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-muted/20" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-        <div className="h-full rounded-full bg-ai transition-all" style={{ width: `${pct}%` }} />
+      <div className="h-1.5 w-full overflow-hidden rounded-sm bg-surface-2 ring-1 ring-inset ring-line" role="progressbar" aria-label={label} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
       </div>
       <div className="tabular mt-1 text-xs text-muted">{pct}%</div>
     </div>
@@ -253,7 +253,7 @@ export function Th({ children, className, sort, onSort, dir }: { children?: Reac
     <th
       scope="col"
       aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : undefined}
-      className={clsx("border-b border-line px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted", className)}
+      className={clsx("ledger-label border-b-[3px] border-double border-rule bg-surface-2/60 px-3 py-2 text-left align-bottom", className)}
     >
       {content}
     </th>
@@ -262,7 +262,7 @@ export function Th({ children, className, sort, onSort, dir }: { children?: Reac
 
 export function Td({ children, className, colSpan }: { children?: ReactNode; className?: string; colSpan?: number }) {
   return (
-    <td colSpan={colSpan} className={clsx("border-b border-line/60 px-3 py-2.5 align-middle", className)}>
+    <td colSpan={colSpan} className={clsx("border-b border-line px-3 py-2 align-middle", className)}>
       {children}
     </td>
   );
@@ -327,7 +327,7 @@ export function ConfirmButton({
         ref={ref}
         aria-labelledby={`${id}-t`}
         onClose={() => setOpen(false)}
-        className="glass-strong m-auto w-[min(92vw,420px)] rounded-xl border border-line p-5 text-ink shadow-2xl backdrop:bg-black/60"
+        className="m-auto w-[min(92vw,420px)] rounded-sm border border-line-strong bg-surface p-5 text-ink shadow-lg backdrop:bg-[#0e1116]/50"
       >
         {open && (
           <>

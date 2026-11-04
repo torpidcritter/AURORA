@@ -22,8 +22,11 @@ from app.services import inventory_service, purchasing_service, settings_service
 
 FONT_DIRS = ("/usr/share/fonts/truetype/dejavu",)
 MAX_REORDER_ROWS = 200
-GREY = (110, 110, 110)
-HEAD = FontFace(emphasis="BOLD", fill_color=(235, 238, 244))
+# Ledger palette (ADR-051): ink-navy text, grey notes, a pale ruled heading row, matching the web app's light theme.
+INK = (24, 35, 58)
+GREY = (86, 98, 122)
+RULE = (154, 166, 182)
+HEAD = FontFace(emphasis="BOLD", color=INK, fill_color=(242, 244, 242))
 
 
 def unicode_font() -> Path | None:
@@ -66,7 +69,7 @@ class _Doc(FPDF):
         self.set_font(self.family, "B", 9)
         self.set_text_color(*GREY)
         self.cell(0, 5, self.t(f"{self.org_name} · Aurora"), new_x="LMARGIN", new_y="NEXT")
-        self.set_text_color(0, 0, 0)
+        self.set_text_color(*INK)
         self.ln(2)
 
     def footer(self) -> None:
@@ -77,7 +80,18 @@ class _Doc(FPDF):
 
     def h1(self, s: str) -> None:
         self.set_font(self.family, "B", 16)
+        self.set_text_color(*INK)
         self.cell(0, 9, self.t(s), new_x="LMARGIN", new_y="NEXT")
+        self.double_rule()
+
+    def double_rule(self) -> None:
+        """The ledger's double rule under a title."""
+        self.set_draw_color(*RULE)
+        self.set_line_width(0.2)
+        y = self.get_y() + 0.5
+        self.line(self.l_margin, y, self.w - self.r_margin, y)
+        self.line(self.l_margin, y + 0.8, self.w - self.r_margin, y + 0.8)
+        self.set_y(y + 2.5)
 
     def h2(self, s: str) -> None:
         self.ln(3)
@@ -89,7 +103,7 @@ class _Doc(FPDF):
         if grey:
             self.set_text_color(*GREY)
         self.multi_cell(0, 4.5, self.t(s), new_x="LMARGIN", new_y="NEXT")
-        self.set_text_color(0, 0, 0)
+        self.set_text_color(*INK)
 
     def pairs(self, rows: list[tuple[str, str]]) -> None:
         for k, v in rows:
@@ -101,6 +115,7 @@ class _Doc(FPDF):
     def grid(self, headings: list[str], rows: list[list[str]], widths: tuple[int, ...], right: set[int]) -> None:
         self.set_font(self.family, "", 8)
         align = tuple("RIGHT" if i in right else "LEFT" for i in range(len(headings)))
+        self.set_draw_color(*RULE)
         with self.table(col_widths=widths, text_align=align, headings_style=HEAD, line_height=4.5) as table:
             table.row([self.t(h) for h in headings])
             for r in rows:

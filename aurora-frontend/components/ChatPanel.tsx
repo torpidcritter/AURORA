@@ -60,10 +60,10 @@ export function ChatPanel() {
           aria-modal="false"
           aria-labelledby={titleId}
           onKeyDown={onKeyDown}
-          className="glass-strong fixed bottom-20 right-4 z-30 flex h-[min(600px,calc(100dvh-7rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-xl border border-line shadow-2xl shadow-black/50"
+          className="bg-surface fixed bottom-20 right-4 z-30 flex h-[min(600px,calc(100dvh-7rem))] w-[min(420px,calc(100vw-2rem))] flex-col overflow-hidden rounded-sm border border-line-strong shadow-lg"
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-ai/15 text-ai" aria-hidden>
+            <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-line-strong text-primary" aria-hidden>
               <Bot className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
@@ -103,7 +103,7 @@ export function ChatPanel() {
         aria-expanded={isOpen}
         aria-controls={isOpen ? panelId : undefined}
         title="Ask the assistant"
-        className="fixed bottom-4 right-4 z-30 inline-flex h-12 w-12 items-center justify-center rounded-full bg-ai text-on-accent shadow-lg shadow-ai/25 ring-1 ring-line transition-colors hover:bg-ai/85"
+        className="fixed bottom-4 right-4 z-30 inline-flex h-12 w-12 items-center justify-center rounded-full bg-primary text-on-accent shadow-md transition-colors hover:bg-primary/90"
       >
         {isOpen ? <X className="h-5 w-5" aria-hidden /> : <Bot className="h-5 w-5" aria-hidden />}
       </button>

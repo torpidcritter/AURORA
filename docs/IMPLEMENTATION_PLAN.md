@@ -94,6 +94,7 @@ Prioritised backlog. `[x]` = implemented **and** covered by passing automated te
 - [x] Observability: alert rules, Grafana dashboard, job and webhook health metrics, optional Sentry with scrubbing (ADR-048)
 - [x] UX polish: light theme, keyboard shortcuts, low-stock browser notifications, number and date formats, phone layout fixes (ADR-049, docs/UX.md)
 - [x] Connectors: scheduled imports from a file address or a WooCommerce store, paused with an alert after repeated failures (ADR-050)
+- [x] Visual restyle: Ledger look with Night shift dark theme, self-hosted fonts, matching PDFs (ADR-051, docs/UX.md)
 - [ ] Not built yet: SFTP and bucket imports, more POS connectors, a self-service demo organisation;
   per-location demand needs sales by location
 
