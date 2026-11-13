@@ -1,0 +1,291 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TORCH_INDEX: https://download.pytorch.org/whl/cpu
+
+jobs:
+  secret-scan:
+    name: Secret scan (tracked files)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Scan for committed credentials
+        run: python scripts/secret_scan.py
+
+  backend:
+    name: Backend (lint, tests, audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: aurora-backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aurora
+          POSTGRES_PASSWORD: aurora
+          POSTGRES_DB: aurora_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aurora" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: aurora-backend/requirements*.txt
+      - name: Install
+        run: |
+          pip install torch==2.14.1 --index-url "$TORCH_INDEX"
+          pip install -r requirements-dev.txt
+      - name: Ruff
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Migrations match models
+        env:
+          DATABASE_URL: postgresql+psycopg://aurora:aurora@localhost:5432/aurora_test
+        run: |
+          alembic upgrade head
+          alembic check
+      - name: Tests
+        env:
+          DATABASE_URL: postgresql+psycopg://aurora:aurora@localhost:5432/aurora_test
+        run: pytest -q
+      - name: Dependency audit
+        run: pip-audit -r requirements.txt --progress-spinner off
+
+  frontend:
+    name: Frontend (types, lint, tests, build, audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: aurora-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: aurora-frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - run: npm audit --audit-level=high
+
+  e2e:
+    name: End-to-end (browser against API + worker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [backend, frontend]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aurora
+          POSTGRES_PASSWORD: aurora
+          POSTGRES_DB: aurora_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aurora" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+    env:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+psycopg://aurora:aurora@localhost:5432/aurora_e2e
+      REDIS_URL: redis://localhost:6379/0
+      API_CORS_ORIGINS: http://localhost:3100
+      ARTIFACT_DIR: ${{ github.workspace }}/artifacts
+      BOOTSTRAP_ADMIN_EMAIL: admin@example.com
+      LOG_JSON: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: aurora-backend/requirements*.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: aurora-frontend/package-lock.json
+      - name: Generate throwaway secrets for this run
+        run: |
+          echo "SECRET_KEY=$(openssl rand -base64 48)" >> "$GITHUB_ENV"
+          PW="E2e-$(openssl rand -hex 12)"
+          echo "::add-mask::$PW"
+          echo "BOOTSTRAP_ADMIN_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_EMAIL=admin@example.com" >> "$GITHUB_ENV"
+      - name: Backend install, migrate, seed synthetic demo data
+        working-directory: aurora-backend
+        run: |
+          pip install torch==2.14.1 --index-url "$TORCH_INDEX"
+          pip install -r requirements.txt
+          alembic upgrade head
+          python -m app.cli bootstrap
+          python -m app.cli seed-demo --products 12 --days 240
+      - name: Start API and worker
+        working-directory: aurora-backend
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8100 > ../api.log 2>&1 &
+          nohup celery -A app.workers.celery_app worker -Q default,training -c 2 > ../worker.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8100/health/ready && break; sleep 2; done
+      - name: Frontend build and start
+        working-directory: aurora-frontend
+        env:
+          API_URL: http://127.0.0.1:8100
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          nohup npx next start -p 3100 > ../web.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://127.0.0.1:3100/login && break; sleep 2; done
+      - name: Playwright
+        working-directory: aurora-frontend
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Logs on failure
+        if: failure()
+        run: tail -n 200 api.log worker.log web.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: aurora-frontend/test-results
+          retention-days: 7
+
+  containers:
+    name: Containers (build images, run Compose stack, smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write .env with throwaway secrets for this run
+        run: |
+          gen() { openssl rand -hex 24; }
+          PW="Smoke-$(gen)"
+          MT="$(gen)"
+          echo "::add-mask::$PW"
+          echo "::add-mask::$MT"
+          {
+            echo "POSTGRES_PASSWORD=$(gen)"
+            echo "APP_DB_PASSWORD=$(gen)"
+            echo "SECRET_KEY=$(openssl rand -base64 48 | tr -d '\n')"
+            echo "PUBLIC_URL=http://localhost:3100"
+            echo "BOOTSTRAP_ADMIN_EMAIL=admin@example.com"
+            echo "BOOTSTRAP_ADMIN_PASSWORD=$PW"
+            echo "METRICS_TOKEN=$MT"
+            # Exercise the S3 storage path against the optional local MinIO.
+            echo "COMPOSE_PROFILES=s3"
+            echo "STORAGE_BACKEND=s3"
+            echo "S3_ENDPOINT_URL=http://minio:9000"
+            echo "S3_ACCESS_KEY=aurora-ci"
+            echo "S3_SECRET_KEY=$(gen)"
+          } > .env
+          echo "SMOKE_PASSWORD=$PW" >> "$GITHUB_ENV"
+          echo "METRICS_TOKEN=$MT" >> "$GITHUB_ENV"
+      - name: Build images
+        run: docker compose build
+      - name: Start the stack
+        run: |
+          docker compose up -d
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8100/health/ready >/dev/null && curl -sf -o /dev/null http://localhost:3100/login && break
+            sleep 5
+          done
+          docker compose ps
+          curl -sf http://127.0.0.1:8100/health/ready
+          curl -sf -o /dev/null http://localhost:3100/login
+          test "$(docker compose ps -a migrate --format '{{.ExitCode}}')" = 0
+      - name: Containers run as the unprivileged user
+        run: |
+          for s in api worker web; do
+            uid=$(docker compose exec -T "$s" id -u)
+            echo "$s uid=$uid"
+            test "$uid" = 10001
+          done
+      - name: Runtime containers use the restricted database role
+        run: |
+          if docker compose exec -T api env | grep -q '^POSTGRES_PASSWORD='; then
+            echo "the API container must not receive the schema owner password"; exit 1
+          fi
+          docker compose exec -T api python - <<'PY'
+          from sqlalchemy import text
+          from sqlalchemy.exc import ProgrammingError
+          from app.db.session import get_engine
+          with get_engine().connect() as c:
+              assert c.execute(text("select current_user")).scalar() == "aurora_app"
+          try:
+              with get_engine().begin() as c:
+                  c.execute(text("create table intruder (id int)"))
+          except ProgrammingError as exc:
+              print("DDL refused as expected:", type(exc.orig).__name__)
+          else:
+              raise SystemExit("the runtime role was able to create a table")
+          PY
+      - name: Bootstrap admin and seed synthetic demo data
+        run: |
+          docker compose run --rm api python -m app.cli bootstrap
+          docker compose run --rm api python -m app.cli seed-demo --products 8 --days 200
+      - name: Smoke test (incl. a 1-epoch training job on the worker container)
+        env:
+          SMOKE_EMAIL: admin@example.com
+          SMOKE_TRAIN: "1"
+        run: scripts/smoke-test.sh
+      - name: Load smoke (Locust, 5 users for 30 s, default thresholds)
+        working-directory: aurora-backend
+        env:
+          LOAD_EMAIL: admin@example.com
+          # A functional check on a shared runner with cold caches, so the latency gates are loose here.
+          # Capacity is measured on staging hardware (tests/load/README.md).
+          LOAD_MAX_P95_MS: "15000"
+          LOAD_P95_MS: "GET /products=3000,GET /alerts=3000,POST /forecast=30000,POST /risk/stockout/batch=30000"
+        run: |
+          python3 -m venv /tmp/load-venv
+          /tmp/load-venv/bin/pip install -q -r requirements-load.txt
+          LOAD_PASSWORD="$SMOKE_PASSWORD" /tmp/load-venv/bin/locust -f tests/load/locustfile.py \
+            --host http://127.0.0.1:8100 --headless -u 5 -r 5 -t 30s --only-summary
+      - name: Dataset and model files were written to MinIO
+        run: |
+          docker compose exec -T api python - <<'PY'
+          from app.storage import get_storage
+          st = get_storage()
+          keys = [o["Key"] for o in st.client.list_objects_v2(Bucket=st.bucket).get("Contents", [])]
+          print(len(keys), "objects, e.g.", keys[:3])
+          assert any(k.endswith(".pt") for k in keys), "no model artifact in object storage"
+          PY
+      - name: Compose logs on failure
+        if: failure()
+        run: docker compose logs --tail 200
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

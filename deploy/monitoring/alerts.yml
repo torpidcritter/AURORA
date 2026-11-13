@@ -1,0 +1,73 @@
+# Prometheus alert rules for Aurora (ADR-048). Load with `rule_files: [alerts.yml]`.
+# Every metric used here is checked against the live /metrics output by tests/integration/test_observability.py.
+# Each alert links to its section in docs/OBSERVABILITY.md, which says what to check first.
+groups:
+  - name: aurora
+    rules:
+      - alert: AuroraApiDown
+        expr: up{job="aurora-api"} == 0
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "Aurora API is not answering /metrics"
+          runbook: "docs/OBSERVABILITY.md#auroraapidown"
+      - alert: AuroraHighErrorRate
+        expr: |
+          sum(rate(aurora_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(aurora_http_requests_total[5m])), 1e-9) > 0.02
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "More than 2% of API requests fail with a server error"
+          runbook: "docs/OBSERVABILITY.md#aurorahigherrorrate"
+      - alert: AuroraSlowRequests
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(aurora_http_request_duration_seconds_bucket{path!~"/train|/forecast.*|/reports/.*|/chat"}[5m]))
+          ) > 2
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "95th percentile latency of ordinary requests is above 2 seconds"
+          runbook: "docs/OBSERVABILITY.md#auroraslowrequests"
+      - alert: AuroraQueueBacklog
+        expr: max(aurora_queue_depth) > 50
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "More than 50 background tasks waiting for 15 minutes"
+          runbook: "docs/OBSERVABILITY.md#auroraqueuebacklog"
+      - alert: AuroraJobsNotStarting
+        expr: aurora_oldest_queued_job_age_seconds > 1800
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "A job has waited more than 30 minutes for a worker"
+          runbook: "docs/OBSERVABILITY.md#aurorajobsnotstarting"
+      - alert: AuroraJobsStuck
+        expr: aurora_jobs_heartbeat_stale > 0
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "A running job has stopped reporting progress"
+          runbook: "docs/OBSERVABILITY.md#aurorajobsstuck"
+      - alert: AuroraJobFailures
+        expr: sum(increase(aurora_forecast_jobs_total{status="failed"}[1h])) > 3
+        labels: {severity: ticket}
+        annotations:
+          summary: "More than 3 background jobs failed in the last hour"
+          runbook: "docs/OBSERVABILITY.md#aurorajobfailures"
+      - alert: AuroraWebhooksNotSending
+        expr: aurora_webhook_deliveries_overdue > 0
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Outgoing webhook deliveries are overdue; the beat or worker may be down"
+          runbook: "docs/OBSERVABILITY.md#aurorawebhooksnotsending"
+      - alert: AuroraStateMetricsMissing
+        expr: absent(aurora_build_info)
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "/metrics cannot read the database (state metrics are missing)"
+          runbook: "docs/OBSERVABILITY.md#aurorastatemetricsmissing"

@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+@theme {
+  /* Ledger (ADR-051): the light theme and the default. Ruled-ledger look: white paper, ink-navy text and actions,
+     double rules under table headings and above totals, figures in a monospace. Colour has two jobs only: the main
+     action (navy) and stock that needs attention (oxblood, ochre). Night shift below is the dark theme. */
+  --color-bg: #f6f7f5;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f4f2;
+  --color-line: #dfe4e8;
+  /* Stronger lines: control borders, tag outlines and the double rules. */
+  --color-line-strong: #c9cfd6;
+  --color-rule: #9aa6b6;
+  --color-ink: #18233a;
+  --color-muted: #56627a;
+  /* At least 4.5:1 on every surface, including surface-2 (WCAG AA for small text). */
+  --color-faint: #646f82;
+  --color-primary: #23395d;
+  --color-ok: #2f6b4f;
+  --color-warn: #86600f;
+  --color-bad: #8f2d2a;
+  /* Planner overrides, scenarios and model training in charts: copper, told apart from navy and grey even with
+     colour-vision deficiency (checked with the dataviz palette validator). */
+  --color-ai: #a0522d;
+  /* Row hover, the selected menu item and other faint fills; text on navy buttons. */
+  --color-hover: #eef2f8;
+  --color-on-accent: #ffffff;
+  --color-nav: #ffffff;
+  /* Chart series (also used as SVG strokes through var()). */
+  --color-chart-actual: #7b8494;
+  --color-chart-soft: #c48a68;
+  --color-chart-high: #a84d14;
+  /* Small radii: business software, not rounded cards. rounded-full stays round (avatars, switches). */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 3px;
+  --radius-xl: 4px;
+  --radius-2xl: 4px;
+  --font-sans: "Instrument Sans Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "Spline Sans Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Night shift: the dark theme. Chosen in the header toggle or the account page, or "match system" with a dark
+   system setting. Same token names, so components need no theme-specific classes. */
+:root {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #12161c;
+  --color-surface: #181d24;
+  --color-surface-2: #1e242c;
+  --color-line: #29303a;
+  --color-line-strong: #39424e;
+  --color-rule: #4a5562;
+  --color-ink: #e2e6eb;
+  --color-muted: #a3acb7;
+  --color-faint: #8d96a2;
+  --color-primary: #7fa7d9;
+  --color-ok: #7cc49a;
+  --color-warn: #e0a84a;
+  --color-bad: #ef8b7f;
+  --color-ai: #e0956a;
+  --color-hover: #1f2731;
+  --color-on-accent: #0c1016;
+  --color-nav: #0e1116;
+  --color-chart-actual: #d5d9de;
+  --color-chart-soft: #f0c2a4;
+  --color-chart-high: #ec9c5a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --color-bg: #12161c;
+    --color-surface: #181d24;
+    --color-surface-2: #1e242c;
+    --color-line: #29303a;
+    --color-line-strong: #39424e;
+    --color-rule: #4a5562;
+    --color-ink: #e2e6eb;
+    --color-muted: #a3acb7;
+    --color-faint: #8d96a2;
+    --color-primary: #7fa7d9;
+    --color-ok: #7cc49a;
+    --color-warn: #e0a84a;
+    --color-bad: #ef8b7f;
+    --color-ai: #e0956a;
+    --color-hover: #1f2731;
+    --color-on-accent: #0c1016;
+    --color-nav: #0e1116;
+    --color-chart-actual: #d5d9de;
+    --color-chart-soft: #f0c2a4;
+    --color-chart-high: #ec9c5a;
+  }
+}
+
+/* Small uppercase monospace label used for card titles, KPI labels and table headings (the ledger "column head"). */
+@utility ledger-label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+body {
+  min-height: 100vh;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Grid items default to min-width: auto, so a wide table inside one (in its own scroll box) would stretch the whole
+   column and make the page scroll sideways on a phone. Layered so a min-w-* utility on an item still wins. */
+@layer base {
+  .grid > * {
+    min-width: 0;
+  }
+}
+
+/* Chart axis figures use the ledger monospace, like table figures. */
+.recharts-cartesian-axis-tick text {
+  font-family: var(--font-mono);
+}
+
+/* The first column of a table is its identifier (SKU, number, name): keep it on one line, as in a stock book. Wide
+   tables scroll inside their own box (see Table in components/ui.tsx). */
+table td:first-child {
+  white-space: nowrap;
+}
