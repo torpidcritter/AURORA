@@ -19,7 +19,7 @@ env:
 jobs:
   secret-scan:
     name: Secret scan (tracked files)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
 
   backend:
     name: Backend (lint, tests, audit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
       run:
@@ -76,7 +76,7 @@ jobs:
 
   frontend:
     name: Frontend (types, lint, tests, build, audit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -99,7 +99,7 @@ jobs:
 
   e2e:
     name: End-to-end (browser against API + worker)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: [backend, frontend]
     services:
@@ -184,7 +184,7 @@ jobs:
 
   containers:
     name: Containers (build images, run Compose stack, smoke test)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [backend, frontend]
     steps:
@@ -289,3 +289,65 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose down -v
+
+  free-hosting:
+    name: Free hosting kit (setup.sh on an ARM Ubuntu server, HTTPS through Caddy)
+    # Same CPU architecture as Oracle Cloud's Always Free servers (docs/FREE_HOSTING.md).
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    needs: [backend, frontend]
+    env:
+      AURORA_DOMAIN: localhost
+      ACME_EMAIL: ci@example.com
+      BOOTSTRAP_ADMIN_EMAIL: admin@example.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the setup script as a server owner would
+        run: bash deploy/oracle-free/setup.sh
+      - name: Secrets were generated on the server and are private
+        run: |
+          test "$(stat -c %a .env)" = 600
+          for k in POSTGRES_PASSWORD APP_DB_PASSWORD SECRET_KEY TOKEN_ENCRYPTION_KEYS BOOTSTRAP_ADMIN_PASSWORD; do
+            v=$(grep "^$k=" .env | cut -d= -f2-)
+            echo "::add-mask::$v"
+            test -n "$v" || { echo "$k is empty"; exit 1; }
+          done
+          echo "SMOKE_PASSWORD=$(grep '^BOOTSTRAP_ADMIN_PASSWORD=' .env | cut -d= -f2-)" >> "$GITHUB_ENV"
+      - name: HTTPS answers and internal pages stay private
+        run: |
+          DC="sudo docker compose -f docker-compose.yml -f deploy/oracle-free/compose.https.yml"
+          # Trust Caddy's local certificate authority (used for "localhost" instead of Let's Encrypt).
+          $DC exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > /tmp/caddy-root.crt
+          for i in $(seq 1 60); do
+            curl -sf --cacert /tmp/caddy-root.crt -o /dev/null https://localhost/login && break
+            sleep 5
+          done
+          curl -sf --cacert /tmp/caddy-root.crt -o /dev/null https://localhost/login
+          for p in /metrics /docs /openapi.json; do
+            code=$(curl -s --cacert /tmp/caddy-root.crt -o /dev/null -w '%{http_code}' "https://localhost$p")
+            echo "$p -> $code"; test "$code" = 404
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/login)" = 308
+      - name: Smoke test through HTTPS (sign-in with secure cookies, forecast, 1-epoch training on ARM)
+        env:
+          WEB_URL: https://localhost
+          SMOKE_EMAIL: admin@example.com
+          SMOKE_TRAIN: "1"
+          CURL_CA_BUNDLE: /tmp/caddy-root.crt
+        run: |
+          DC="sudo docker compose -f docker-compose.yml -f deploy/oracle-free/compose.https.yml"
+          $DC run --rm api python -m app.cli seed-demo --products 8 --days 200
+          scripts/smoke-test.sh
+      - name: The nightly backup command works and the script can run again
+        run: |
+          sudo sh -c "$(grep -o 'cd .*-delete' /etc/cron.d/aurora-backup | sed 's/\\%/%/g')"
+          sudo ls -l /var/backups/aurora
+          # A custom-format pg_dump file starts with "PGDMP".
+          sudo sh -c 'head -c 5 "$(ls -1 /var/backups/aurora/*.dump | head -1)"' | grep -q PGDMP
+          bash deploy/oracle-free/setup.sh
+      - name: Logs on failure
+        if: failure()
+        run: sudo docker compose -f docker-compose.yml -f deploy/oracle-free/compose.https.yml logs --tail 200
+      - name: Tear down
+        if: always()
+        run: sudo docker compose -f docker-compose.yml -f deploy/oracle-free/compose.https.yml down -v

@@ -1,0 +1,21 @@
+# HTTPS front door for a single-server Aurora (docs/FREE_HOSTING.md).
+# Caddy gets and renews a Let's Encrypt certificate for {$AURORA_DOMAIN} by itself.
+{
+	email {$ACME_EMAIL}
+}
+
+{$AURORA_DOMAIN} {
+	encode zstd gzip
+
+	# Never public: metrics and API docs (the web app already refuses to proxy them).
+	@internal path /metrics /metrics/* /docs /docs/* /redoc /openapi.json
+	respond @internal 404
+
+	# Shopify calls the API directly (RUNBOOK section 3).
+	@shopify path /shopify/callback /shopify/webhooks/*
+	reverse_proxy @shopify api:8100
+
+	# Everything else goes to the web app, which talks to the API itself.
+	# Caddy replaces any X-Forwarded-For sent by the client with the real address.
+	reverse_proxy web:3100
+}

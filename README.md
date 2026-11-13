@@ -76,6 +76,7 @@ Backend pytest, frontend Vitest, Playwright end-to-end and a Locust load test. C
 - [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md): backlog and progress
 - [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECISIONS.md): design decisions and deviations from the spec
 - [`docs/RUNBOOK.md`](docs/RUNBOOK.md): deployment, migrations, backup/restore, secrets, monitoring
+- [`docs/FREE_HOSTING.md`](docs/FREE_HOSTING.md): run everything for free on one Oracle Cloud Always Free server
 - [`docs/TESTING.md`](docs/TESTING.md): running the test suites
 - API reference: `http://localhost:8100/docs` when the API runs locally (not exposed through the web app)
 

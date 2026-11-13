@@ -698,3 +698,22 @@ The spec names files that do not exist here; the responsibilities live in these 
   The neutral grey for actual sales fails that validator's chroma check by design: actuals are not a category.
 - Not done: user-selectable accent colours or per-organisation branding.
 
+## ADR-052 Free hosting on one Oracle Cloud Always Free server
+- The owner wants to run Aurora without any paid plan. Checked in November 2026: Vercel Hobby is free but is for
+  non-commercial use and only hosts the web app; Railway has no lasting free tier; Hugging Face no longer lets free
+  accounts run Docker Spaces (since mid-2026); free tiers of Render, Koyeb and similar give 0.5-1 GB of memory, less
+  than the API and worker need with PyTorch loaded. Oracle Cloud's Always Free Arm allowance (2 OCPUs, 12 GB since
+  June 2026) fits the whole single-host Compose stack.
+- So the free option is the existing `docker-compose.yml` on one server, plus `deploy/oracle-free/compose.https.yml`
+  (Caddy with automatic Let's Encrypt certificates as the only public listener, one API process) and `setup.sh`,
+  which installs Docker, opens the host firewall, generates every secret on the server into a mode-600 `.env`,
+  starts the stack, creates the first admin and schedules a nightly `pg_dump` kept for 7 days. Files stay on the
+  shared `artifacts` volume, so no object storage is needed. Caddy answers 404 for `/metrics`, `/docs`, `/redoc` and
+  `/openapi.json`, routes Shopify's callback and webhooks to the API and everything else to the web app.
+- CI runs `setup.sh` on a GitHub-hosted Arm Ubuntu 24.04 runner (the same CPU architecture as Oracle's free servers),
+  then signs in and trains through HTTPS with Caddy's local certificate authority, checks the private paths, the
+  backup file and a second run of the script.
+- Trade-offs written down in `docs/FREE_HOSTING.md`: one server and no redundancy, backups on the same disk unless
+  copied off, slow CPU training, possible reclamation of idle Always Free servers and "out of capacity" errors.
+  The Railway + Vercel path (RUNBOOK section 12) stays for paid hosting.
+

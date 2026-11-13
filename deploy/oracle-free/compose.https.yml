@@ -1,0 +1,29 @@
+# Adds the HTTPS front door to docker-compose.yml for a single public server:
+#   docker compose -f docker-compose.yml -f deploy/oracle-free/compose.https.yml up -d
+# Only Caddy listens on the internet (ports 80 and 443); everything else stays on the private compose network.
+services:
+  caddy:
+    image: caddy:2.11.6-alpine
+    restart: unless-stopped
+    environment:
+      AURORA_DOMAIN: ${AURORA_DOMAIN:?set AURORA_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/oracle-free/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - web
+
+  # Small free servers: one API process is enough and leaves memory for training.
+  api:
+    environment:
+      WEB_CONCURRENCY: ${API_WORKERS:-1}
+
+volumes:
+  caddydata:
+  caddyconfig:
