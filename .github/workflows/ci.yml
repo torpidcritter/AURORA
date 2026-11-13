@@ -19,7 +19,7 @@ env:
 jobs:
   secret-scan:
     name: Secret scan (tracked files)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
 
   backend:
     name: Backend (lint, tests, audit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
       run:
@@ -76,7 +76,7 @@ jobs:
 
   frontend:
     name: Frontend (types, lint, tests, build, audit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -99,7 +99,7 @@ jobs:
 
   e2e:
     name: End-to-end (browser against API + worker)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: [backend, frontend]
     services:
@@ -184,7 +184,7 @@ jobs:
 
   containers:
     name: Containers (build images, run Compose stack, smoke test)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: [backend, frontend]
     steps:
