@@ -91,6 +91,8 @@ candidate by the promotion gate.
 - Real Anthropic API calls (no key). Request shape follows the SDK documentation; the fallback path is tested.
 - Real Shopify OAuth and webhooks (no app credentials).
 - Railway and Vercel deployment (config written, never deployed).
+- Oracle Cloud Always Free hosting: `deploy/oracle-free/setup.sh` is run in CI on an Arm Ubuntu 24.04 runner, but the
+  Oracle console steps and a real Let's Encrypt certificate have not been exercised (docs/FREE_HOSTING.md).
 - Alert webhook delivery to a real endpoint (tested with a fake HTTP client).
 - AWS S3 itself (MinIO and a local S3 server were used).
 
